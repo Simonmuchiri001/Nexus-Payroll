@@ -1,0 +1,45 @@
+name: nexus-enterprise
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexus
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.docker}
+    volumes:
+      # PostgreSQL 18 stores data in a version-specific subdirectory of
+      # /var/lib/postgresql. Mounting .../data is rejected by the image.
+      - nexus-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus -d nexus"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "55432:5432"
+
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/backend.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NEXUS_ENVIRONMENT: ${NEXUS_ENVIRONMENT:-development}
+      NEXUS_DATABASE_URL: postgresql+asyncpg://nexus:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.docker}@postgres:5432/nexus
+      NEXUS_JWT_SECRET: ${NEXUS_JWT_SECRET:?Set NEXUS_JWT_SECRET in .env.docker}
+      NEXUS_ALLOWED_HOSTS: '${NEXUS_ALLOWED_HOSTS:-["localhost","127.0.0.1"]}'
+      NEXUS_LOG_LEVEL: ${NEXUS_LOG_LEVEL:-INFO}
+    command:
+      - sh
+      - -c
+      - alembic upgrade head && uvicorn nexus_api.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+    ports:
+      - "8000:8000"
+
+volumes:
+  nexus-postgres:

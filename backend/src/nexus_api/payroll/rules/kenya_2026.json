@@ -1,0 +1,46 @@
+{
+  "name": "Kenya statutory rules (PAYE, NSSF, SHIF, Affordable Housing Levy)",
+  "version": "KE-2026.1",
+  "effective_from": "2025-02-01",
+  "source_urls": [
+    "https://www.kra.go.ke/individual/filing-paying/types-of-taxes/paye",
+    "https://www.sha.go.ke/premium-rates/",
+    "https://www.nssf.or.ke/nssf-act",
+    "https://www.nssf.or.ke/employers"
+  ],
+  "rules": {
+    "jurisdiction_code": "KE",
+    "currency": "KES",
+    "paye_bands": [
+      {"upper": "24000.00", "rate": "0.10"},
+      {"upper": "32333.00", "rate": "0.25"},
+      {"upper": "500000.00", "rate": "0.30"},
+      {"upper": "800000.00", "rate": "0.325"},
+      {"upper": null, "rate": "0.35"}
+    ],
+    "personal_relief_monthly": "2400.00",
+    "nssf": {
+      "employee_rate": "0.06",
+      "employer_rate": "0.06",
+      "lower_earnings_limit": "8000.00",
+      "upper_earnings_limit": "72000.00"
+    },
+    "shif": {
+      "rate": "0.0275",
+      "minimum_monthly": "300.00"
+    },
+    "housing_levy": {
+      "employee_rate": "0.015",
+      "employer_rate": "0.015"
+    },
+    "nita": {
+      "enabled": false,
+      "monthly_amount_per_employee": "50.00"
+    },
+    "pension": {
+      "relief_cap_monthly": "30000.00"
+    },
+    "post_retirement_medical_cap_monthly": "15000.00",
+    "mortgage_interest_cap_monthly": "30000.00"
+  }
+}

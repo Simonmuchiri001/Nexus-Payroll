@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.pyright/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.docker.example
+*.pem
+*.key
+*.p12
+
+# Local databases and runtime state
+.pgdata/
+.pglog
+*.sqlite3
+var/
+logs/
+*.log
+
+# Desktop build artefacts
+*.app
+*.dmg
+*.pkg
+*.msi
+*.exe
+release/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

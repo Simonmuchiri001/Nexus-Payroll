@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Lint and type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv python install 3.13
+      - run: uv sync --frozen --all-packages
+      - run: uv run ruff format --check backend desktop
+      - run: uv run ruff check backend desktop
+      - run: uv run pyright
+
+  backend:
+    name: Backend integration tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: nexus
+          POSTGRES_PASSWORD: nexus
+          POSTGRES_DB: nexus_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nexus -d nexus_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      NEXUS_TEST_DATABASE_URL: postgresql+asyncpg://nexus:nexus@127.0.0.1:5432/nexus_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv python install 3.13
+      - run: uv sync --frozen --all-packages
+      - run: uv run pytest backend/tests -q
+
+  desktop:
+    name: Desktop tests (offscreen)
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libdbus-1-3 libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0
+      - run: uv python install 3.13
+      - run: uv sync --frozen --all-packages
+      - run: uv run pytest desktop/tests -q
+
+  container:
+    name: Container build and runtime
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare evaluation environment
+        run: |
+          cat > .env.docker <<'EOF'
+          POSTGRES_PASSWORD=ci-only-database-password
+          NEXUS_JWT_SECRET=ci-only-jwt-secret-with-at-least-32-characters
+          NEXUS_ENVIRONMENT=test
+          NEXUS_ALLOWED_HOSTS=["localhost","127.0.0.1"]
+          NEXUS_LOG_LEVEL=INFO
+          EOF
+      - name: Build and start the stack
+        run: docker compose --env-file .env.docker up -d --build
+      - name: Wait for API readiness
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/api/v1/health/ready; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose --env-file .env.docker logs
+          exit 1
+      - name: Bootstrap and verify login
+        run: |
+          docker compose --env-file .env.docker exec -T \
+            -e NEXUS_BOOTSTRAP_ADMIN_PASSWORD='CiContainer!2026' \
+            api nexus-api bootstrap \
+            --organization-slug ci-container \
+            --organization-name 'CI Container' \
+            --company-code CI \
+            --company-name 'CI Container Limited' \
+            --admin-email admin@nexus.co.ke \
+            --admin-name 'CI Administrator'
+          curl -fsS -X POST http://127.0.0.1:8000/api/v1/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"organization_slug":"ci-container","email":"admin@nexus.co.ke","password":"CiContainer!2026"}' \
+            | grep -q '"access_token"'
+      - name: Stop the stack
+        if: always()
+        run: docker compose --env-file .env.docker down -v

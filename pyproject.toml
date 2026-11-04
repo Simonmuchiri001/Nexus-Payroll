@@ -1,0 +1,77 @@
+[project]
+name = "nexus-enterprise-workspace"
+version = "0.1.0"
+description = "Nexus Enterprise multi-company payroll, HR, accounting and banking platform"
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["backend", "desktop"]
+
+[dependency-groups]
+dev = [
+  "httpx>=0.28.1",
+  "pyright>=1.1.400",
+  "pytest>=8.3.4",
+  "pytest-asyncio>=0.25.2",
+  "pytest-cov>=6.0.0",
+  "pytest-qt>=4.4.0",
+  "ruff>=0.9.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests", "desktop/tests"]
+addopts = "-ra --strict-markers"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+markers = [
+  "postgres: requires a running PostgreSQL 18 instance",
+  "ui: requires a Qt display",
+]
+
+[tool.coverage.run]
+source = ["backend/src/nexus_api", "desktop/src/nexus_desktop"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["backend/src", "backend/tests", "desktop/src", "desktop/tests"]
+
+[tool.ruff.lint]
+select = [
+  "E", "F", "I", "B", "UP", "SIM", "ASYNC", "RUF", "PT", "S", "T20",
+]
+ignore = [
+  "E501",  # line length is enforced by the formatter
+  "B008",  # FastAPI Depends() in defaults is the framework contract
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "S105", "S106", "S311", "PT011"]
+"backend/alembic/versions/**" = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.13"
+venvPath = "."
+venv = ".venv"
+include = ["backend/src", "desktop/src"]
+exclude = [".venv", "**/__pycache__"]
+extraPaths = ["backend/src", "desktop/src"]
+
+[tool.pyright.defineConstant]
+"__debug__" = true

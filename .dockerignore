@@ -1,0 +1,17 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+.venv
+.pgdata
+.pglog
+.pytest_cache
+.ruff_cache
+.pyright
+**/__pycache__
+**/*.pyc
+backend/tests
+desktop/tests
+docs
+*.log
