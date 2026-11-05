@@ -29,6 +29,8 @@ ATTENDANCE_ID = "15151515-1515-1515-1515-151515151515"
 LOAN_ID = "16161616-1616-1616-1616-161616161616"
 LOAN_INSTALLMENT_ONE = "17171717-1717-1717-1717-171717171717"
 LOAN_INSTALLMENT_TWO = "18181818-1818-1818-1818-181818181818"
+BENEFIT_PLAN_ID = "19191919-1919-1919-1919-191919191919"
+BENEFIT_ENROLLMENT_ID = "20202020-2020-2020-2020-202020202020"
 
 ALL_PERMISSIONS = [
     "organization.view",
@@ -53,6 +55,8 @@ ALL_PERMISSIONS = [
     "loan.request",
     "loan.approve",
     "loan.disburse",
+    "benefit.view",
+    "benefit.manage",
     "payroll.view",
     "payroll.calculate",
     "payroll.approve",
@@ -165,6 +169,18 @@ class FakeApi:
                 return httpx.Response(200, json=self._loan_detail())
             if len(parts) == 4 and parts[3] in {"approve", "reject", "cancel", "disburse"}:
                 return httpx.Response(200, json=self._loan_detail(parts[3]))
+        if path == "/benefits/plans" and request.method == "POST":
+            return httpx.Response(201, json=self._benefit_plan_from_request(request))
+        if path == "/benefits/plans":
+            return httpx.Response(200, json=[self._benefit_plan()])
+        if path.startswith("/benefits/plans/") and request.method == "PATCH":
+            return httpx.Response(200, json=self._benefit_plan_from_request(request, update=True))
+        if path == "/benefits/enrollments" and request.method == "POST":
+            return httpx.Response(201, json=self._benefit_enrollment_from_request(request))
+        if path == "/benefits/enrollments":
+            return httpx.Response(200, json=self._benefit_enrollment_page())
+        if path.startswith("/benefits/enrollments/") and path.endswith("/end"):
+            return httpx.Response(200, json=self._ended_enrollment(request))
         if path == "/users":
             return httpx.Response(200, json=self._membership_page())
         if path == "/roles":
@@ -295,6 +311,9 @@ class FakeApi:
             "employee_statutory_total": "18570.00",
             "employer_statutory_total": "5820.00",
             "deductions_total": "28382.35",
+            "loan_deduction_total": "0.00",
+            "benefit_employee_total": "0.00",
+            "benefit_employer_total": "0.00",
             "net_total": "71617.65",
             "employer_cost_total": "105820.00",
             "prepared_by": USER_ID,
@@ -325,6 +344,9 @@ class FakeApi:
             "nssf_employee": "2400.00",
             "shif_employee": "2740.00",
             "housing_levy_employee": "1500.00",
+            "loan_deduction": "0.00",
+            "benefit_employee_deduction": "0.00",
+            "benefit_employer_contribution": "0.00",
             "total_deductions": "28382.35",
             "net_pay": "71617.65",
             "nssf_employer": "2400.00",
@@ -610,6 +632,105 @@ class FakeApi:
         loan["journal_id"] = None
         loan["version"] = 1
         return loan
+
+    @staticmethod
+    def _benefit_plan(status: str = "active") -> dict[str, Any]:
+        return {
+            "id": BENEFIT_PLAN_ID,
+            "organization_id": ORGANIZATION_ID,
+            "company_id": COMPANY_ID,
+            "code": "MED",
+            "name": "Comprehensive medical cover",
+            "category": "medical",
+            "employee_contribution": "2500.00",
+            "employer_contribution": "5000.00",
+            "currency": "KES",
+            "description": "Voluntary staff medical scheme",
+            "status": status,
+            "created_at": "2026-01-02T08:00:00Z",
+            "version": 1,
+        }
+
+    @staticmethod
+    def _benefit_enrollment(status: str = "active") -> dict[str, Any]:
+        return {
+            "id": BENEFIT_ENROLLMENT_ID,
+            "organization_id": ORGANIZATION_ID,
+            "company_id": COMPANY_ID,
+            "employee_id": EMPLOYEE_ID,
+            "employee_number": "EMP-0001",
+            "employee_name": "Achieng Otieno",
+            "plan_id": BENEFIT_PLAN_ID,
+            "plan_code": "MED",
+            "plan_name": "Comprehensive medical cover",
+            "plan_category": "medical",
+            "effective_from": "2026-01-01",
+            "effective_to": "2026-10-31" if status == "ended" else None,
+            "employee_contribution": "2500.00",
+            "employer_contribution": "5000.00",
+            "currency": "KES",
+            "status": status,
+            "notes": "Employee elected family cover.",
+            "ended_by": USER_ID if status == "ended" else None,
+            "ended_at": "2026-10-31T12:00:00Z" if status == "ended" else None,
+            "end_note": "Cover ended at the employee's request." if status == "ended" else None,
+            "created_at": "2026-01-02T09:00:00Z",
+            "version": 1,
+        }
+
+    def _benefit_enrollment_page(self) -> dict[str, Any]:
+        return {
+            "items": [self._benefit_enrollment()],
+            "total": 1,
+            "page": 1,
+            "page_size": 25,
+        }
+
+    def _benefit_plan_from_request(
+        self, request: httpx.Request, *, update: bool = False
+    ) -> dict[str, Any]:
+        body = cast(dict[str, Any], json.loads(request.content))
+        plan = self._benefit_plan(str(body.get("status", "active")))
+        if update:
+            for field in (
+                "name",
+                "category",
+                "employee_contribution",
+                "employer_contribution",
+                "description",
+            ):
+                if field in body:
+                    plan[field] = body[field]
+            plan["version"] = 2
+        else:
+            plan["code"] = str(body["code"]).upper()
+            plan["name"] = str(body["name"])
+            plan["category"] = body["category"]
+            plan["employee_contribution"] = body["employee_contribution"]
+            plan["employer_contribution"] = body["employer_contribution"]
+            plan["description"] = body["description"]
+        return plan
+
+    def _benefit_enrollment_from_request(self, request: httpx.Request) -> dict[str, Any]:
+        body = cast(dict[str, Any], json.loads(request.content))
+        enrollment = self._benefit_enrollment("active")
+        enrollment["employee_id"] = body["employee_id"]
+        enrollment["plan_id"] = body["plan_id"]
+        enrollment["effective_from"] = body["effective_from"]
+        enrollment["effective_to"] = body["effective_to"]
+        enrollment["employee_contribution"] = body["employee_contribution"]
+        enrollment["employer_contribution"] = body["employer_contribution"]
+        enrollment["notes"] = body["notes"]
+        enrollment["version"] = 1
+        return enrollment
+
+    def _ended_enrollment(self, request: httpx.Request) -> dict[str, Any]:
+        body = cast(dict[str, Any], json.loads(request.content))
+        enrollment = self._benefit_enrollment("ended")
+        enrollment["effective_to"] = body["effective_to"]
+        enrollment["end_note"] = body["note"]
+        enrollment["version"] = 2
+        return enrollment
 
     @staticmethod
     def _membership_page() -> dict[str, Any]:

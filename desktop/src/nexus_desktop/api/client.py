@@ -20,6 +20,9 @@ from nexus_desktop.api.models import (
     Account,
     AttendancePage,
     AttendanceRecord,
+    BenefitEnrollment,
+    BenefitEnrollmentPage,
+    BenefitPlan,
     Compensation,
     Employee,
     EmployeePage,
@@ -443,6 +446,147 @@ class NexusClient:
                     "disbursed_on": disbursed_on.isoformat(),
                     "first_due_date": first_due_date.isoformat(),
                     "reference": reference,
+                },
+            ),
+        )
+
+    def list_benefit_plans(
+        self, company_id: str, *, status: str | None = None
+    ) -> list[BenefitPlan]:
+        params: dict[str, Any] = {"company_id": company_id}
+        if status:
+            params["status"] = status
+        payload = self._get("/benefits/plans", params=params)
+        return [BenefitPlan.model_validate(item) for item in cast(list[Any], payload)]
+
+    def create_benefit_plan(
+        self,
+        *,
+        company_id: str,
+        code: str,
+        name: str,
+        category: str,
+        employee_contribution: str,
+        employer_contribution: str,
+        description: str | None,
+    ) -> BenefitPlan:
+        return self._parse(
+            BenefitPlan,
+            self._send(
+                "POST",
+                "/benefits/plans",
+                json_body={
+                    "company_id": company_id,
+                    "code": code,
+                    "name": name,
+                    "category": category,
+                    "employee_contribution": employee_contribution,
+                    "employer_contribution": employer_contribution,
+                    "description": description,
+                },
+            ),
+        )
+
+    def update_benefit_plan(
+        self,
+        plan_id: str,
+        *,
+        version: int,
+        name: str,
+        category: str,
+        employee_contribution: str,
+        employer_contribution: str,
+        description: str | None,
+        status: str | None = None,
+    ) -> BenefitPlan:
+        body: dict[str, Any] = {
+            "version": version,
+            "name": name,
+            "category": category,
+            "employee_contribution": employee_contribution,
+            "employer_contribution": employer_contribution,
+            "description": description,
+        }
+        if status:
+            body["status"] = status
+        return self._parse(
+            BenefitPlan,
+            self._send("PATCH", f"/benefits/plans/{plan_id}", json_body=body),
+        )
+
+    def list_benefit_enrollments(
+        self,
+        company_id: str,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+        status: str | None = None,
+        employee_id: str | None = None,
+        plan_id: str | None = None,
+    ) -> BenefitEnrollmentPage:
+        params: dict[str, Any] = {
+            "company_id": company_id,
+            "page": page,
+            "page_size": page_size,
+        }
+        if status:
+            params["status"] = status
+        if employee_id:
+            params["employee_id"] = employee_id
+        if plan_id:
+            params["plan_id"] = plan_id
+        return self._parse(
+            BenefitEnrollmentPage,
+            self._get("/benefits/enrollments", params=params),
+        )
+
+    def create_benefit_enrollment(
+        self,
+        *,
+        company_id: str,
+        employee_id: str,
+        plan_id: str,
+        effective_from: date,
+        effective_to: date | None,
+        employee_contribution: str,
+        employer_contribution: str,
+        notes: str | None,
+    ) -> BenefitEnrollment:
+        return self._parse(
+            BenefitEnrollment,
+            self._send(
+                "POST",
+                "/benefits/enrollments",
+                json_body={
+                    "company_id": company_id,
+                    "employee_id": employee_id,
+                    "plan_id": plan_id,
+                    "effective_from": effective_from.isoformat(),
+                    "effective_to": effective_to.isoformat() if effective_to else None,
+                    "employee_contribution": employee_contribution,
+                    "employer_contribution": employer_contribution,
+                    "notes": notes,
+                },
+            ),
+        )
+
+    def end_benefit_enrollment(
+        self,
+        enrollment_id: str,
+        *,
+        version: int,
+        effective_to: date,
+        note: str | None,
+    ) -> BenefitEnrollment:
+        return self._parse(
+            BenefitEnrollment,
+            self._send(
+                "POST",
+                f"/benefits/enrollments/{enrollment_id}/end",
+                json_body={
+                    "version": version,
+                    "effective_to": effective_to.isoformat(),
+                    "note": note,
                 },
             ),
         )

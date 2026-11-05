@@ -125,6 +125,9 @@ class PayrollRun(BaseModel):
     employee_statutory_total: Decimal
     employer_statutory_total: Decimal
     deductions_total: Decimal
+    loan_deduction_total: Decimal = Decimal("0.00")
+    benefit_employee_total: Decimal = Decimal("0.00")
+    benefit_employer_total: Decimal = Decimal("0.00")
     net_total: Decimal
     employer_cost_total: Decimal
     prepared_by: uuid.UUID
@@ -153,6 +156,9 @@ class PayrollResult(BaseModel):
     nssf_employee: Decimal
     shif_employee: Decimal
     housing_levy_employee: Decimal
+    loan_deduction: Decimal = Decimal("0.00")
+    benefit_employee_deduction: Decimal = Decimal("0.00")
+    benefit_employer_contribution: Decimal = Decimal("0.00")
     total_deductions: Decimal
     net_pay: Decimal
     nssf_employer: Decimal
@@ -317,6 +323,54 @@ class LoanPage(BaseModel):
 class LoanDetail(BaseModel):
     loan: Loan
     installments: list[LoanInstallment]
+
+
+class BenefitPlan(BaseModel):
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    company_id: uuid.UUID
+    code: str
+    name: str
+    category: str
+    employee_contribution: Decimal
+    employer_contribution: Decimal
+    currency: str
+    description: str | None
+    status: str
+    created_at: datetime
+    version: int
+
+
+class BenefitEnrollment(BaseModel):
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    company_id: uuid.UUID
+    employee_id: uuid.UUID
+    employee_number: str
+    employee_name: str
+    plan_id: uuid.UUID
+    plan_code: str
+    plan_name: str
+    plan_category: str
+    effective_from: date
+    effective_to: date | None
+    employee_contribution: Decimal
+    employer_contribution: Decimal
+    currency: str
+    status: str
+    notes: str | None
+    ended_by: uuid.UUID | None
+    ended_at: datetime | None
+    end_note: str | None
+    created_at: datetime
+    version: int
+
+
+class BenefitEnrollmentPage(BaseModel):
+    items: list[BenefitEnrollment]
+    total: int
+    page: int
+    page_size: int
 
 
 class Account(BaseModel):

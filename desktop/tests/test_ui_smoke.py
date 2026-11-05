@@ -20,6 +20,7 @@ from nexus_desktop.ui.login import LoginWindow
 from nexus_desktop.ui.main_window import MainWindow
 from nexus_desktop.ui.pages.access import AccessPage
 from nexus_desktop.ui.pages.accounting import AccountingPage
+from nexus_desktop.ui.pages.benefits import BenefitsPage
 from nexus_desktop.ui.pages.employees import EmployeesPage
 from nexus_desktop.ui.pages.leave import LeavePage
 from nexus_desktop.ui.pages.loans import LoansPage
@@ -129,6 +130,7 @@ def test_main_window_loads_every_page_and_switches_theme(
         "People",
         "Leave",
         "Loans",
+        "Benefits",
         "Payroll",
         "Accounting",
         "Access",
@@ -171,6 +173,19 @@ def test_main_window_loads_every_page_and_switches_theme(
     assert loans.disburse_button.isEnabled() is False
 
     window.navigation.setCurrentRow(4)
+    benefits = window.stack.currentWidget()
+    assert isinstance(benefits, BenefitsPage)
+    qtbot.waitUntil(lambda: benefits.plans_table.rowCount() == 1, timeout=8_000)
+    qtbot.waitUntil(lambda: benefits.enrollments_table.rowCount() == 1, timeout=8_000)
+    assert benefits.plans_table.item(0, 0).text() == "MED"
+    assert benefits.plans_table.item(0, 1).text() == "Comprehensive medical cover"
+    assert benefits.plans_table.item(0, 3).text() == "2500.00"
+    assert benefits.enrollments_table.item(0, 0).text() == "Achieng Otieno"
+    assert benefits.enrollments_table.item(0, 4).text() == "2500.00"
+    assert benefits.new_plan_button.isEnabled() is True
+    assert benefits.end_enrollment_button.isEnabled() is True
+
+    window.navigation.setCurrentRow(5)
     payroll = window.stack.currentWidget()
     assert isinstance(payroll, PayrollPage)
     qtbot.waitUntil(lambda: payroll.runs_table.rowCount() == 1, timeout=8_000)
@@ -178,14 +193,14 @@ def test_main_window_loads_every_page_and_switches_theme(
     assert payroll.runs_table.item(0, 0).text() == "PR-202610-0001"
     assert payroll.results_table.item(0, 0).text() == "Achieng Otieno"
 
-    window.navigation.setCurrentRow(5)
+    window.navigation.setCurrentRow(6)
     accounting = window.stack.currentWidget()
     assert isinstance(accounting, AccountingPage)
     qtbot.waitUntil(lambda: accounting.balance_badge.text() == "Balanced", timeout=8_000)
     assert accounting.accounts_table.rowCount() == 2
     assert accounting.journals_table.rowCount() == 1
 
-    window.navigation.setCurrentRow(6)
+    window.navigation.setCurrentRow(7)
     access = window.stack.currentWidget()
     assert isinstance(access, AccessPage)
     qtbot.waitUntil(lambda: access.table.rowCount() == 1, timeout=8_000)

@@ -28,6 +28,8 @@ class PermissionCode(StrEnum):
     LOAN_REQUEST = "loan.request"
     LOAN_APPROVE = "loan.approve"
     LOAN_DISBURSE = "loan.disburse"
+    BENEFIT_VIEW = "benefit.view"
+    BENEFIT_MANAGE = "benefit.manage"
     PAYROLL_VIEW = "payroll.view"
     PAYROLL_CALCULATE = "payroll.calculate"
     PAYROLL_APPROVE = "payroll.approve"
@@ -64,6 +66,8 @@ PERMISSION_DESCRIPTIONS: dict[PermissionCode, tuple[str, str]] = {
     PermissionCode.LOAN_REQUEST: ("loans", "Record and cancel loan and advance applications"),
     PermissionCode.LOAN_APPROVE: ("loans", "Approve or reject loan and advance applications"),
     PermissionCode.LOAN_DISBURSE: ("loans", "Disburse approved loans and post to accounting"),
+    PermissionCode.BENEFIT_VIEW: ("benefits", "View benefit plans and employee enrolments"),
+    PermissionCode.BENEFIT_MANAGE: ("benefits", "Manage benefit plans and employee enrolments"),
     PermissionCode.PAYROLL_VIEW: ("payroll", "View payroll runs and results"),
     PermissionCode.PAYROLL_CALCULATE: ("payroll", "Prepare and calculate payroll"),
     PermissionCode.PAYROLL_APPROVE: ("payroll", "Approve calculated payroll"),
@@ -99,6 +103,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[PermissionCode]] = {
             PermissionCode.LOAN_VIEW,
             PermissionCode.LOAN_REQUEST,
             PermissionCode.LOAN_APPROVE,
+            PermissionCode.BENEFIT_VIEW,
+            PermissionCode.BENEFIT_MANAGE,
             PermissionCode.PAYROLL_VIEW,
             PermissionCode.REPORT_VIEW,
             PermissionCode.RULE_VIEW,
@@ -115,6 +121,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[PermissionCode]] = {
             PermissionCode.LOAN_VIEW,
             PermissionCode.LOAN_REQUEST,
             PermissionCode.LOAN_APPROVE,
+            PermissionCode.BENEFIT_VIEW,
             PermissionCode.PAYROLL_VIEW,
             PermissionCode.PAYROLL_CALCULATE,
             PermissionCode.PAYROLL_APPROVE,
@@ -135,6 +142,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[PermissionCode]] = {
             PermissionCode.ATTENDANCE_VIEW,
             PermissionCode.LOAN_VIEW,
             PermissionCode.LOAN_REQUEST,
+            PermissionCode.BENEFIT_VIEW,
             PermissionCode.PAYROLL_VIEW,
             PermissionCode.PAYROLL_CALCULATE,
             PermissionCode.REPORT_VIEW,
@@ -152,6 +160,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[PermissionCode]] = {
             PermissionCode.LOAN_VIEW,
             PermissionCode.LOAN_APPROVE,
             PermissionCode.LOAN_DISBURSE,
+            PermissionCode.BENEFIT_VIEW,
             PermissionCode.PAYROLL_VIEW,
             PermissionCode.PAYROLL_APPROVE,
             PermissionCode.PAYROLL_POST,
@@ -171,6 +180,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[PermissionCode]] = {
             PermissionCode.LEAVE_VIEW,
             PermissionCode.ATTENDANCE_VIEW,
             PermissionCode.LOAN_VIEW,
+            PermissionCode.BENEFIT_VIEW,
             PermissionCode.PAYROLL_VIEW,
             PermissionCode.ACCOUNTING_VIEW,
             PermissionCode.AUDIT_VIEW,

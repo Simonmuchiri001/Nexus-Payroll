@@ -99,6 +99,8 @@ class PayrollRunResponse(BaseModel):
     employer_statutory_total: Decimal
     deductions_total: Decimal
     loan_deduction_total: Decimal
+    benefit_employee_total: Decimal
+    benefit_employer_total: Decimal
     net_total: Decimal
     employer_cost_total: Decimal
     prepared_by: uuid.UUID
@@ -136,6 +138,8 @@ class PayrollResultResponse(BaseModel):
     loan_deduction: Decimal
     loan_principal: Decimal
     loan_interest: Decimal
+    benefit_employee_deduction: Decimal
+    benefit_employer_contribution: Decimal
     total_deductions: Decimal
     net_pay: Decimal
     nssf_employer: Decimal

@@ -27,15 +27,21 @@ jurisdiction.
   carryover, company holidays, working-day leave requests, separate approver
   checks, balance movements and an attendance register created from approved
   leave.
+- **Loans and advances.** Employee applications, separation of duties,
+  disbursement journals, reducing-balance schedules and payroll deduction
+  reservations that settle on finalisation.
+- **Benefits.** Company benefit plans, effective-dated employee enrolments,
+  snapshotted employee and employer contributions, calendar-day proration,
+  payroll deductions and balanced benefit payable/expense posting.
 - **Payroll.** Pay groups and periods, deterministic Kenya statutory
   calculation, preparer/approver separation of duties, immutable approved runs,
   finalisation, idempotent ledger posting and per-run statutory rule snapshots.
 - **Accounting.** Company chart of accounts, fiscal periods, balanced journals,
   source-linked posting and trial balance.
 - **Desktop.** Secure keychain session restoration, company switching,
-  overview, people directory and onboarding, leave and attendance, payroll
-  setup and lifecycle, accounting views, access administration, plus light and
-  dark themes.
+  overview, people directory and onboarding, leave and attendance, loans,
+  benefit plans and enrolments, payroll setup and lifecycle, accounting views,
+  access administration, plus light and dark themes.
 - **Quality gates.** Ruff, Pyright strict, PostgreSQL integration tests,
   migration round-trip tests, offscreen pytest-qt UI tests and a GitHub Actions
   workflow.
@@ -44,7 +50,8 @@ jurisdiction.
 
 These are real gaps, not hidden placeholders:
 
-- Recruitment, benefits, loans and advances
+- Recruitment
+- Benefit provider billing, eligibility feeds and insurer reconciliations
 - Payroll deductions driven by unpaid leave, absence or attendance
 - Automatic national public-holiday calendars
 - Expenses, assets, depreciation, procurement and inventory

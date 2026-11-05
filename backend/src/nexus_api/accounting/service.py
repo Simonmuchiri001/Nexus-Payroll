@@ -44,12 +44,14 @@ DEFAULT_CHART: tuple[tuple[str, str, str, str], ...] = (
     ("2130", "Affordable Housing Levy Payable", "liability", "credit"),
     ("2140", "NITA Payable", "liability", "credit"),
     ("2200", "Net Pay Payable", "liability", "credit"),
+    ("2300", "Employee Benefits Payable", "liability", "credit"),
     ("3000", "Retained Earnings", "equity", "credit"),
     ("4000", "Revenue", "revenue", "credit"),
     ("4100", "Interest Income", "revenue", "credit"),
     ("5100", "Salaries and Wages", "expense", "debit"),
     ("5200", "Employer Statutory Contributions", "expense", "debit"),
     ("5300", "General Expenses", "expense", "debit"),
+    ("5400", "Employee Benefits Expense", "expense", "debit"),
 )
 
 SYSTEM_CODES = {
@@ -63,7 +65,9 @@ SYSTEM_CODES = {
     "housing_payable": "2130",
     "nita_payable": "2140",
     "net_pay_payable": "2200",
+    "benefit_payable": "2300",
     "interest_income": "4100",
+    "benefit_expense": "5400",
 }
 
 
@@ -545,13 +549,25 @@ async def post_payroll_run(session: AsyncSession, context: AuthContext, run: Pay
     )
     loan_interest_total = _money(sum((result.loan_interest for result in results), Decimal("0.00")))
     loan_total = _money(loan_principal_total + loan_interest_total)
-    debit_total = _money(run.gross_total + employer_total)
+    benefit_employee_total = _money(
+        sum((result.benefit_employee_deduction for result in results), Decimal("0.00"))
+    )
+    benefit_employer_total = _money(
+        sum((result.benefit_employer_contribution for result in results), Decimal("0.00"))
+    )
+    if benefit_employee_total != _money(run.benefit_employee_total):
+        raise IntegrityError("Payroll benefit employee totals do not match the run snapshot.")
+    if benefit_employer_total != _money(run.benefit_employer_total):
+        raise IntegrityError("Payroll benefit employer totals do not match the run snapshot.")
+    benefit_total = _money(benefit_employee_total + benefit_employer_total)
+    debit_total = _money(run.gross_total + employer_total + benefit_employer_total)
     credit_total = _money(
         run.paye_total
         + nssf_total
         + shif_total
         + housing_total
         + nita_total
+        + benefit_total
         + run.net_total
         + loan_total
     )
@@ -581,6 +597,11 @@ async def post_payroll_run(session: AsyncSession, context: AuthContext, run: Pay
     debit_lines = [
         (SYSTEM_CODES["salary_expense"], "Gross salaries and allowances", run.gross_total),
         (SYSTEM_CODES["employer_expense"], "Employer statutory contributions", employer_total),
+        (
+            SYSTEM_CODES["benefit_expense"],
+            "Employer benefit contributions",
+            benefit_employer_total,
+        ),
     ]
     credit_lines = [
         (SYSTEM_CODES["paye_payable"], "PAYE payable", run.paye_total),
@@ -588,6 +609,11 @@ async def post_payroll_run(session: AsyncSession, context: AuthContext, run: Pay
         (SYSTEM_CODES["shif_payable"], "SHIF payable", shif_total),
         (SYSTEM_CODES["housing_payable"], "Affordable Housing Levy payable", housing_total),
         (SYSTEM_CODES["nita_payable"], "NITA payable", nita_total),
+        (
+            SYSTEM_CODES["benefit_payable"],
+            "Employee benefits payable",
+            benefit_total,
+        ),
         (
             SYSTEM_CODES["loan_receivable"],
             "Employee loan principal recovered",

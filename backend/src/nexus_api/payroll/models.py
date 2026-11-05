@@ -139,6 +139,10 @@ class PayrollRun(Base, UUIDPrimaryKeyMixin, TimestampMixin, OptimisticLockMixin)
         CheckConstraint("net_total >= 0", name="net_non_negative"),
         CheckConstraint("loan_deduction_total >= 0", name="loan_deduction_non_negative"),
         CheckConstraint(
+            "benefit_employee_total >= 0 AND benefit_employer_total >= 0",
+            name="benefit_totals_non_negative",
+        ),
+        CheckConstraint(
             "approved_by IS NULL OR approved_by <> prepared_by",
             name="approver_separation_of_duties",
         ),
@@ -184,6 +188,12 @@ class PayrollRun(Base, UUIDPrimaryKeyMixin, TimestampMixin, OptimisticLockMixin)
     loan_deduction_total: Mapped[Decimal] = mapped_column(
         Numeric(20, 2), nullable=False, default=Decimal("0.00"), server_default="0"
     )
+    benefit_employee_total: Mapped[Decimal] = mapped_column(
+        Numeric(20, 2), nullable=False, default=Decimal("0.00"), server_default="0"
+    )
+    benefit_employer_total: Mapped[Decimal] = mapped_column(
+        Numeric(20, 2), nullable=False, default=Decimal("0.00"), server_default="0"
+    )
     net_total: Mapped[Decimal] = mapped_column(
         Numeric(20, 2), nullable=False, default=Decimal("0.00")
     )
@@ -227,6 +237,10 @@ class PayrollResult(Base, UUIDPrimaryKeyMixin, TimestampMixin):
             "loan_deduction = loan_principal + loan_interest",
             name="loan_split_reconciles",
         ),
+        CheckConstraint(
+            "benefit_employee_deduction >= 0 AND benefit_employer_contribution >= 0",
+            name="benefit_amounts_non_negative",
+        ),
         Index("ix_results_run", "payroll_run_id"),
         Index("ix_results_employee", "employee_id"),
     )
@@ -260,6 +274,12 @@ class PayrollResult(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         Numeric(20, 2), nullable=False, default=Decimal("0.00"), server_default="0"
     )
     loan_interest: Mapped[Decimal] = mapped_column(
+        Numeric(20, 2), nullable=False, default=Decimal("0.00"), server_default="0"
+    )
+    benefit_employee_deduction: Mapped[Decimal] = mapped_column(
+        Numeric(20, 2), nullable=False, default=Decimal("0.00"), server_default="0"
+    )
+    benefit_employer_contribution: Mapped[Decimal] = mapped_column(
         Numeric(20, 2), nullable=False, default=Decimal("0.00"), server_default="0"
     )
     total_deductions: Mapped[Decimal] = mapped_column(Numeric(20, 2), nullable=False)

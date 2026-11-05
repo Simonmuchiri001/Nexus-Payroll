@@ -30,6 +30,10 @@ The backend is a modular monolith. Packages are split by business capability:
 - `employees`: employee records, effective-dated compensation and termination.
 - `leave`: leave types, entitlements, capped carryover, holidays, working-day
   requests, approval decisions, balance movements and attendance records.
+- `loans`: employee loans and advances, approval, disbursement journals,
+  reducing-balance schedules and payroll deduction settlement.
+- `benefits`: benefit plans, effective-dated employee enrolments, contribution
+  snapshots and payroll benefit charges.
 - `payroll`: pay groups, periods, runs, calculations, lifecycle transitions,
   statutory rule sets and per-run snapshots.
 - `accounting`: company chart of accounts, fiscal periods, journals, posting and
@@ -101,6 +105,29 @@ draft -> calculated -> approved -> finalized -> posted
 - Leave and attendance are not yet consumed by payroll calculation. Unpaid
   leave, absence and attendance-driven deductions remain future work.
 
+## Loans and benefits
+
+- Loan and advance applications move through
+  `pending -> approved -> disbursed -> closed`, with rejection and cancellation
+  branches. The requester cannot approve their own application.
+- Disbursement posts a balanced journal from the employee loan receivable
+  account to cash exactly once, keyed by the loan source.
+- Repayment uses a reducing-balance schedule. Instalments due by the payroll
+  payment date are reserved during calculation and marked deducted on
+  finalisation. A loan closes when its final instalment is settled.
+- Benefit plans carry monthly employee and employer contributions. Enrolments
+  snapshot those amounts and are effective-dated; only one active enrolment per
+  employee and plan is allowed.
+- Payroll prorates contributions by calendar-day overlap with the period. The
+  employee share is a post-tax deduction; the employer share is additional
+  employer cost. Posting credits employee benefits payable and debits employee
+  benefits expense.
+- Benefit employee and employer totals are stored on the run and each result,
+  including a per-enrolment snapshot, so later plan changes cannot rewrite a
+  calculated or finalised run.
+- Employer-provided benefit tax treatment and provider billing are not inferred
+  or automated. They require verified jurisdiction rules and provider contracts.
+
 ## Statutory calculation
 
 `backend/src/nexus_api/payroll/rules/kenya_2026.json` is parsed and validated
@@ -146,6 +173,11 @@ backend errors are logged and returned without internal details.
 - Leave tests cover working-day calculation, holiday exclusion, balance
   movements, separation of duties, overlap and entitlement boundaries,
   carryover caps and attendance collisions.
+- Loan tests cover approval and disbursement journals, payroll deduction,
+  affordability rejection and automatic closure.
+- Benefit tests cover plan and enrolment boundaries, duplicate active
+  enrolments, archive protection, calendar-day proration, payroll totals and
+  balanced benefit posting.
 - Migration tests run upgrade, downgrade to base and re-upgrade in an isolated
   schema.
 - Trigger tests prove audit rows cannot be updated or deleted.

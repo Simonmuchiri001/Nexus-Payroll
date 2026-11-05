@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import PaginationParams
 from nexus_api.audit.service import record_audit
+from nexus_api.benefits.models import BenefitEnrollment, BenefitPlan
 from nexus_api.core.errors import (
     ConfigurationError,
     ConflictError,
@@ -55,6 +56,19 @@ class CalculationLine:
 
 
 @dataclass(frozen=True, slots=True)
+class BenefitCharge:
+    enrollment_id: uuid.UUID
+    plan_id: uuid.UUID
+    plan_code: str
+    plan_name: str
+    employee_amount: Decimal
+    employer_amount: Decimal
+    effective_from: date
+    effective_to: date | None
+    prorated_days: int
+
+
+@dataclass(frozen=True, slots=True)
 class EmployeeCalculation:
     employee: Employee
     days_in_period: int
@@ -67,6 +81,8 @@ class EmployeeCalculation:
     loan_deduction: Decimal
     loan_principal: Decimal
     loan_interest: Decimal
+    benefit_employee_deduction: Decimal
+    benefit_employer_contribution: Decimal
     taxable_income: Decimal
     paye: Decimal
     nssf_employee: Decimal
@@ -475,6 +491,28 @@ async def calculate_run(
     for installment, loan in loan_rows.all():
         loans_by_employee[loan.employee_id].append((installment, loan))
 
+    benefit_rows = await session.execute(
+        select(BenefitEnrollment, BenefitPlan)
+        .join(BenefitPlan, BenefitPlan.id == BenefitEnrollment.plan_id)
+        .where(
+            BenefitEnrollment.company_id == run.company_id,
+            BenefitEnrollment.status.in_(("active", "ended")),
+            BenefitEnrollment.effective_from <= run.period_end,
+            or_(
+                BenefitEnrollment.effective_to.is_(None),
+                BenefitEnrollment.effective_to >= run.period_start,
+            ),
+            BenefitEnrollment.employee_id.in_(employee_ids),
+        )
+        .order_by(BenefitEnrollment.employee_id, BenefitPlan.code)
+        .with_for_update(of=BenefitEnrollment)
+    )
+    benefits_by_employee: dict[uuid.UUID, list[tuple[BenefitEnrollment, BenefitPlan]]] = (
+        defaultdict(list)
+    )
+    for enrollment, plan in benefit_rows.all():
+        benefits_by_employee[enrollment.employee_id].append((enrollment, plan))
+
     missing = [employee for employee in employees if not by_employee.get(employee.id)]
     if missing:
         raise ValidationFailureError(
@@ -503,6 +541,7 @@ async def calculate_run(
                 rules,
                 run.currency,
                 loans_by_employee.get(employee.id, []),
+                benefits_by_employee.get(employee.id, []),
             )
         )
 
@@ -517,6 +556,8 @@ async def calculate_run(
     employer_statutory_total = Decimal("0.00")
     deductions_total = Decimal("0.00")
     loan_deduction_total = Decimal("0.00")
+    benefit_employee_total = Decimal("0.00")
+    benefit_employer_total = Decimal("0.00")
     net_total = Decimal("0.00")
     employer_cost_total = Decimal("0.00")
 
@@ -543,6 +584,8 @@ async def calculate_run(
             loan_deduction=calculation.loan_deduction,
             loan_principal=calculation.loan_principal,
             loan_interest=calculation.loan_interest,
+            benefit_employee_deduction=calculation.benefit_employee_deduction,
+            benefit_employer_contribution=calculation.benefit_employer_contribution,
             total_deductions=calculation.total_deductions,
             net_pay=calculation.net_pay,
             nssf_employer=calculation.nssf_employer,
@@ -582,6 +625,8 @@ async def calculate_run(
         )
         deductions_total += calculation.total_deductions
         loan_deduction_total += calculation.loan_deduction
+        benefit_employee_total += calculation.benefit_employee_deduction
+        benefit_employer_total += calculation.benefit_employer_contribution
         net_total += calculation.net_pay
         employer_cost_total += calculation.employer_cost
 
@@ -593,6 +638,8 @@ async def calculate_run(
     run.employer_statutory_total = money(employer_statutory_total)
     run.deductions_total = money(deductions_total)
     run.loan_deduction_total = money(loan_deduction_total)
+    run.benefit_employee_total = money(benefit_employee_total)
+    run.benefit_employer_total = money(benefit_employer_total)
     run.net_total = money(net_total)
     run.employer_cost_total = money(employer_cost_total)
     run.status = "calculated"
@@ -620,6 +667,51 @@ async def calculate_run(
     return run
 
 
+def _benefit_charges_for(
+    benefits: list[tuple[BenefitEnrollment, BenefitPlan]],
+    period_start: date,
+    period_end: date,
+    termination_date: date | None,
+) -> tuple[BenefitCharge, ...]:
+    """Prorate monthly contributions by calendar-day overlap with the period.
+
+    Ended enrolments remain chargeable for periods they overlap, and employment
+    termination caps the chargeable days even if the enrolment has no end date.
+    """
+
+    total_days = (period_end - period_start).days + 1
+    charges: list[BenefitCharge] = []
+    for enrollment, plan in benefits:
+        overlap_start = max(period_start, enrollment.effective_from)
+        overlap_end = min(
+            period_end,
+            enrollment.effective_to or period_end,
+            termination_date or period_end,
+        )
+        if overlap_end < overlap_start:
+            continue
+        days = (overlap_end - overlap_start).days + 1
+        share = Decimal(days) / Decimal(total_days)
+        employee_amount = money(enrollment.employee_contribution * share)
+        employer_amount = money(enrollment.employer_contribution * share)
+        if employee_amount == 0 and employer_amount == 0:
+            continue
+        charges.append(
+            BenefitCharge(
+                enrollment_id=enrollment.id,
+                plan_id=plan.id,
+                plan_code=plan.code,
+                plan_name=plan.name,
+                employee_amount=employee_amount,
+                employer_amount=employer_amount,
+                effective_from=enrollment.effective_from,
+                effective_to=enrollment.effective_to,
+                prorated_days=days,
+            )
+        )
+    return tuple(charges)
+
+
 def _calculate_employee(
     employee: Employee,
     compensations: list[EmployeeCompensation],
@@ -628,6 +720,7 @@ def _calculate_employee(
     rules: KenyaStatutoryRules,
     currency: str,
     loan_due: list[tuple[LoanInstallment, EmployeeLoan]],
+    benefit_due: list[tuple[BenefitEnrollment, BenefitPlan]],
 ) -> EmployeeCalculation:
     total_days = (period_end - period_start).days + 1
     base = Decimal("0.00")
@@ -693,16 +786,33 @@ def _calculate_employee(
         sum((installment.interest_due for installment, _loan in loan_due), Decimal("0.00"))
     )
     loan_deduction = money(loan_principal + loan_interest)
+    for enrollment, _plan in benefit_due:
+        if enrollment.currency != currency:
+            raise ValidationFailureError(
+                f"Employee {employee.employee_number} has a benefit enrolment in "
+                f"{enrollment.currency}, not {currency}."
+            )
+    benefit_charges = _benefit_charges_for(
+        benefit_due, period_start, period_end, employee.termination_date
+    )
+    benefit_employee = money(
+        sum((charge.employee_amount for charge in benefit_charges), Decimal("0.00"))
+    )
+    benefit_employer = money(
+        sum((charge.employer_amount for charge in benefit_charges), Decimal("0.00"))
+    )
     available_after_statutory = money(gross - statutory.total_employee_statutory)
-    if loan_deduction > available_after_statutory:
+    required_other_deductions = money(loan_deduction + benefit_employee)
+    if required_other_deductions > available_after_statutory:
         raise ValidationFailureError(
             f"Employee {employee.employee_number} has insufficient net pay for the "
-            "scheduled loan deduction.",
+            "scheduled loan and benefit deductions.",
             details={
                 "employee_id": str(employee.id),
                 "employee_number": employee.employee_number,
                 "net_available": str(available_after_statutory),
                 "loan_deduction_required": str(loan_deduction),
+                "benefit_deduction_required": str(benefit_employee),
                 "installments": [
                     {
                         "loan_number": loan.loan_number,
@@ -712,15 +822,23 @@ def _calculate_employee(
                     }
                     for installment, loan in loan_due
                 ],
+                "benefits": [
+                    {
+                        "plan_code": charge.plan_code,
+                        "employee_amount": str(charge.employee_amount),
+                        "employer_amount": str(charge.employer_amount),
+                    }
+                    for charge in benefit_charges
+                ],
             },
         )
-    total_deductions = money(statutory.total_employee_statutory + loan_deduction)
+    total_deductions = money(statutory.total_employee_statutory + loan_deduction + benefit_employee)
     net_pay = money(gross - total_deductions)
     if net_pay < 0:
         raise ValidationFailureError(
             f"Employee {employee.employee_number} would have negative net pay."
         )
-    employer_cost = money(gross + statutory.total_employer_statutory)
+    employer_cost = money(gross + statutory.total_employer_statutory + benefit_employer)
 
     lines = _lines_for(
         base,
@@ -735,6 +853,7 @@ def _calculate_employee(
         statutory.housing_employer,
         statutory.nita,
         loan_due,
+        benefit_charges,
     )
     snapshot: dict[str, Any] = {
         "engine_version": ENGINE_VERSION,
@@ -756,6 +875,22 @@ def _calculate_employee(
             for installment, loan in loan_due
         ],
         "loan_deduction": str(loan_deduction),
+        "benefits": [
+            {
+                "enrollment_id": str(charge.enrollment_id),
+                "plan_id": str(charge.plan_id),
+                "plan_code": charge.plan_code,
+                "plan_name": charge.plan_name,
+                "effective_from": charge.effective_from.isoformat(),
+                "effective_to": (charge.effective_to.isoformat() if charge.effective_to else None),
+                "prorated_days": charge.prorated_days,
+                "employee_amount": str(charge.employee_amount),
+                "employer_amount": str(charge.employer_amount),
+            }
+            for charge in benefit_charges
+        ],
+        "benefit_employee_deduction": str(benefit_employee),
+        "benefit_employer_contribution": str(benefit_employer),
         "statutory": {
             "taxable_income": str(statutory.taxable_income),
             "paye": str(statutory.paye),
@@ -780,6 +915,8 @@ def _calculate_employee(
         loan_deduction=loan_deduction,
         loan_principal=loan_principal,
         loan_interest=loan_interest,
+        benefit_employee_deduction=benefit_employee,
+        benefit_employer_contribution=benefit_employer,
         taxable_income=statutory.taxable_income,
         paye=statutory.paye,
         nssf_employee=statutory.nssf_employee,
@@ -810,6 +947,7 @@ def _lines_for(
     housing_employer: Decimal,
     nita: Decimal,
     loan_due: list[tuple[LoanInstallment, EmployeeLoan]],
+    benefit_charges: tuple[BenefitCharge, ...],
 ) -> tuple[CalculationLine, ...]:
     candidates = (
         CalculationLine("earning", "BASE", "Basic salary", base, True),
@@ -844,7 +982,28 @@ def _lines_for(
         )
         for installment, loan in loan_due
     )
-    return tuple(line for line in candidates if line.amount > 0) + loan_lines
+    benefit_lines = tuple(
+        line
+        for charge in benefit_charges
+        for line in (
+            CalculationLine(
+                "deduction",
+                f"BEN-EE-{charge.plan_code}",
+                f"{charge.plan_name} employee contribution",
+                charge.employee_amount,
+                False,
+            ),
+            CalculationLine(
+                "employer_contribution",
+                f"BEN-ER-{charge.plan_code}",
+                f"{charge.plan_name} employer contribution",
+                charge.employer_amount,
+                False,
+            ),
+        )
+        if line.amount > 0
+    )
+    return tuple(line for line in candidates if line.amount > 0) + loan_lines + benefit_lines
 
 
 async def approve_run(session: AsyncSession, context: AuthContext, run_id: uuid.UUID) -> PayrollRun:
