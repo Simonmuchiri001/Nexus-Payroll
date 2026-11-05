@@ -26,6 +26,9 @@ from nexus_desktop.api.models import (
     Compensation,
     Employee,
     EmployeePage,
+    ExpenseCategory,
+    ExpenseClaim,
+    ExpenseClaimPage,
     Holiday,
     JournalPage,
     LeaveBalance,
@@ -587,6 +590,193 @@ class NexusClient:
                     "version": version,
                     "effective_to": effective_to.isoformat(),
                     "note": note,
+                },
+            ),
+        )
+
+    def list_expense_categories(
+        self, company_id: str, *, status: str | None = None
+    ) -> list[ExpenseCategory]:
+        params: dict[str, Any] = {"company_id": company_id}
+        if status:
+            params["status"] = status
+        payload = self._get("/expenses/categories", params=params)
+        return [ExpenseCategory.model_validate(item) for item in cast(list[Any], payload)]
+
+    def create_expense_category(
+        self,
+        *,
+        company_id: str,
+        code: str,
+        name: str,
+        expense_account_id: str,
+        description: str | None,
+    ) -> ExpenseCategory:
+        return self._parse(
+            ExpenseCategory,
+            self._send(
+                "POST",
+                "/expenses/categories",
+                json_body={
+                    "company_id": company_id,
+                    "code": code,
+                    "name": name,
+                    "expense_account_id": expense_account_id,
+                    "description": description,
+                },
+            ),
+        )
+
+    def update_expense_category(
+        self,
+        category_id: str,
+        *,
+        version: int,
+        name: str,
+        expense_account_id: str,
+        description: str | None,
+        status: str | None = None,
+    ) -> ExpenseCategory:
+        body: dict[str, Any] = {
+            "version": version,
+            "name": name,
+            "expense_account_id": expense_account_id,
+            "description": description,
+        }
+        if status:
+            body["status"] = status
+        return self._parse(
+            ExpenseCategory,
+            self._send("PATCH", f"/expenses/categories/{category_id}", json_body=body),
+        )
+
+    def list_expense_claims(
+        self,
+        company_id: str,
+        *,
+        page: int = 1,
+        page_size: int = 50,
+        employee_id: str | None = None,
+        category_id: str | None = None,
+        status: str | None = None,
+    ) -> ExpenseClaimPage:
+        params: dict[str, Any] = {
+            "company_id": company_id,
+            "page": page,
+            "page_size": page_size,
+        }
+        if employee_id:
+            params["employee_id"] = employee_id
+        if category_id:
+            params["category_id"] = category_id
+        if status:
+            params["status"] = status
+        return self._parse(
+            ExpenseClaimPage,
+            self._get("/expenses/claims", params=params),
+        )
+
+    def create_expense_claim(
+        self,
+        *,
+        company_id: str,
+        employee_id: str,
+        category_id: str,
+        expense_date: date,
+        description: str,
+        amount: str,
+        receipt_number: str | None,
+        receipt_date: date | None,
+        receipt_merchant: str | None,
+    ) -> ExpenseClaim:
+        return self._parse(
+            ExpenseClaim,
+            self._send(
+                "POST",
+                "/expenses/claims",
+                json_body={
+                    "company_id": company_id,
+                    "employee_id": employee_id,
+                    "category_id": category_id,
+                    "expense_date": expense_date.isoformat(),
+                    "description": description,
+                    "amount": amount,
+                    "receipt_number": receipt_number,
+                    "receipt_date": receipt_date.isoformat() if receipt_date else None,
+                    "receipt_merchant": receipt_merchant,
+                },
+            ),
+        )
+
+    def update_expense_claim(
+        self,
+        claim_id: str,
+        *,
+        version: int,
+        employee_id: str,
+        category_id: str,
+        expense_date: date,
+        description: str,
+        amount: str,
+        receipt_number: str | None,
+        receipt_date: date | None,
+        receipt_merchant: str | None,
+    ) -> ExpenseClaim:
+        return self._parse(
+            ExpenseClaim,
+            self._send(
+                "PATCH",
+                f"/expenses/claims/{claim_id}",
+                json_body={
+                    "version": version,
+                    "employee_id": employee_id,
+                    "category_id": category_id,
+                    "expense_date": expense_date.isoformat(),
+                    "description": description,
+                    "amount": amount,
+                    "receipt_number": receipt_number,
+                    "receipt_date": receipt_date.isoformat() if receipt_date else None,
+                    "receipt_merchant": receipt_merchant,
+                },
+            ),
+        )
+
+    def expense_action(
+        self,
+        claim_id: str,
+        action: str,
+        *,
+        version: int,
+        note: str | None = None,
+    ) -> ExpenseClaim:
+        if action not in {"submit", "approve", "reject", "cancel"}:
+            raise ValueError(f"Unsupported expense action: {action}")
+        return self._parse(
+            ExpenseClaim,
+            self._send(
+                "POST",
+                f"/expenses/claims/{claim_id}/{action}",
+                json_body={"version": version, "note": note},
+            ),
+        )
+
+    def reimburse_expense_claim(
+        self,
+        claim_id: str,
+        *,
+        version: int,
+        paid_on: date,
+        reference: str,
+    ) -> ExpenseClaim:
+        return self._parse(
+            ExpenseClaim,
+            self._send(
+                "POST",
+                f"/expenses/claims/{claim_id}/reimburse",
+                json_body={
+                    "version": version,
+                    "paid_on": paid_on.isoformat(),
+                    "reference": reference,
                 },
             ),
         )

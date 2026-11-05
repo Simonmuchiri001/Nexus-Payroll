@@ -152,6 +152,29 @@ async def test_expense_claim_reimbursement_posts_balanced_journal_once(
     assert archive_blocked.status_code == 409
     assert "claims" in archive_blocked.json()["error"]["message"].lower()
 
+    alternate_account = await client.post(
+        f"{API}/accounting/accounts",
+        headers=admin_session.headers,
+        json={
+            "company_id": admin_session.company_id,
+            "code": "5310",
+            "name": "Client travel expense",
+            "account_type": "expense",
+            "normal_balance": "debit",
+        },
+    )
+    assert alternate_account.status_code == 201, alternate_account.text
+    mapping_change = await client.patch(
+        f"{API}/expenses/categories/{category['id']}",
+        headers=admin_session.headers,
+        json={
+            "expense_account_id": alternate_account.json()["id"],
+            "version": category["version"],
+        },
+    )
+    assert mapping_change.status_code == 409
+    assert "mapping" in mapping_change.json()["error"]["message"].lower()
+
     approver_cannot_pay = await client.post(
         f"{API}/expenses/claims/{claim['id']}/reimburse",
         headers=approver.headers,

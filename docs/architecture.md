@@ -34,6 +34,8 @@ The backend is a modular monolith. Packages are split by business capability:
   reducing-balance schedules and payroll deduction settlement.
 - `benefits`: benefit plans, effective-dated employee enrolments, contribution
   snapshots and payroll benefit charges.
+- `expenses`: expense categories, receipt metadata, employee claims, approval
+  separation and cash reimbursement posting.
 - `payroll`: pay groups, periods, runs, calculations, lifecycle transitions,
   statutory rule sets and per-run snapshots.
 - `accounting`: company chart of accounts, fiscal periods, journals, posting and
@@ -128,6 +130,24 @@ draft -> calculated -> approved -> finalized -> posted
 - Employer-provided benefit tax treatment and provider billing are not inferred
   or automated. They require verified jurisdiction rules and provider contracts.
 
+## Expenses and reimbursements
+
+- Expense categories are company-scoped and map to active ledger expense
+  accounts. A category cannot be archived while draft, submitted or approved
+  claims still need it.
+- Claims carry the employee, expense date, purpose, amount, currency and
+  receipt metadata. Drafts can be edited by the requester or an expense manager;
+  submission freezes the claim for approval.
+- The requester cannot approve or reject their own claim. The approver cannot
+  reimburse the same claim, and the requester cannot reimburse it. Reimbursement
+  requires an authorised payer and an open fiscal period.
+- Reimbursement creates one posted journal keyed by
+  `(company_id, 'expense_claim', claim_id)`: debit the mapped expense account
+  and credit cash. Retried reimbursement requests return the same claim and
+  journal without paying twice.
+- A category's account mapping cannot change after claims have been recorded,
+  preserving the accounting meaning of historical claims and journals.
+
 ## Statutory calculation
 
 `backend/src/nexus_api/payroll/rules/kenya_2026.json` is parsed and validated
@@ -178,6 +198,9 @@ backend errors are logged and returned without internal details.
 - Benefit tests cover plan and enrolment boundaries, duplicate active
   enrolments, archive protection, calendar-day proration, payroll totals and
   balanced benefit posting.
+- Expense tests cover receipt and employment-date validation, draft editing,
+  approval and payer separation, category archive protection, balanced cash
+  reimbursement and idempotent retry behaviour.
 - Migration tests run upgrade, downgrade to base and re-upgrade in an isolated
   schema.
 - Trigger tests prove audit rows cannot be updated or deleted.

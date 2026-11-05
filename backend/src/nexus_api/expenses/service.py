@@ -244,6 +244,16 @@ async def update_category(
     if payload.name is not None:
         category.name = payload.name.strip()
     if payload.expense_account_id is not None:
+        if payload.expense_account_id != category.expense_account_id:
+            recorded_claims = await session.scalar(
+                select(func.count(ExpenseClaim.id)).where(
+                    ExpenseClaim.category_id == category.id,
+                )
+            )
+            if recorded_claims:
+                raise ConflictError(
+                    "The expense account mapping cannot change after claims have been recorded."
+                )
         account = await _expense_account(session, category.company_id, payload.expense_account_id)
         category.expense_account_id = account.id
     if "description" in payload.model_fields_set:

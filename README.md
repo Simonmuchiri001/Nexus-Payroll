@@ -33,6 +33,9 @@ jurisdiction.
 - **Benefits.** Company benefit plans, effective-dated employee enrolments,
   snapshotted employee and employer contributions, calendar-day proration,
   payroll deductions and balanced benefit payable/expense posting.
+- **Expenses.** Configurable expense categories mapped to ledger accounts,
+  receipt-backed employee claims, approval and payer separation, and
+  idempotent balanced cash reimbursement journals.
 - **Payroll.** Pay groups and periods, deterministic Kenya statutory
   calculation, preparer/approver separation of duties, immutable approved runs,
   finalisation, idempotent ledger posting and per-run statutory rule snapshots.
@@ -40,8 +43,8 @@ jurisdiction.
   source-linked posting and trial balance.
 - **Desktop.** Secure keychain session restoration, company switching,
   overview, people directory and onboarding, leave and attendance, loans,
-  benefit plans and enrolments, payroll setup and lifecycle, accounting views,
-  access administration, plus light and dark themes.
+  benefit plans and enrolments, expense claims and categories, payroll setup and
+  lifecycle, accounting views, access administration, plus light and dark themes.
 - **Quality gates.** Ruff, Pyright strict, PostgreSQL integration tests,
   migration round-trip tests, offscreen pytest-qt UI tests and a GitHub Actions
   workflow.
@@ -54,7 +57,7 @@ These are real gaps, not hidden placeholders:
 - Benefit provider billing, eligibility feeds and insurer reconciliations
 - Payroll deductions driven by unpaid leave, absence or attendance
 - Automatic national public-holiday calendars
-- Expenses, assets, depreciation, procurement and inventory
+- Assets, depreciation, procurement and inventory
 - Sales, invoicing, receivables, CRM and projects
 - Bank accounts, reconciliations, payment disbursement and payment files
 - KRA/eCitizen filing, M-Pesa, bank and accounting-provider integrations

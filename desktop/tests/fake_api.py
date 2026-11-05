@@ -31,6 +31,8 @@ LOAN_INSTALLMENT_ONE = "17171717-1717-1717-1717-171717171717"
 LOAN_INSTALLMENT_TWO = "18181818-1818-1818-1818-181818181818"
 BENEFIT_PLAN_ID = "19191919-1919-1919-1919-191919191919"
 BENEFIT_ENROLLMENT_ID = "20202020-2020-2020-2020-202020202020"
+EXPENSE_CATEGORY_ID = "21212121-2121-2121-2121-212121212121"
+EXPENSE_CLAIM_ID = "22222222-2222-2222-2222-222222222222"
 
 ALL_PERMISSIONS = [
     "organization.view",
@@ -57,6 +59,11 @@ ALL_PERMISSIONS = [
     "loan.disburse",
     "benefit.view",
     "benefit.manage",
+    "expense.view",
+    "expense.submit",
+    "expense.approve",
+    "expense.pay",
+    "expense.manage",
     "payroll.view",
     "payroll.calculate",
     "payroll.approve",
@@ -181,6 +188,38 @@ class FakeApi:
             return httpx.Response(200, json=self._benefit_enrollment_page())
         if path.startswith("/benefits/enrollments/") and path.endswith("/end"):
             return httpx.Response(200, json=self._ended_enrollment(request))
+        if path == "/expenses/categories" and request.method == "POST":
+            return httpx.Response(201, json=self._expense_category_from_request(request))
+        if path == "/expenses/categories":
+            return httpx.Response(200, json=[self._expense_category()])
+        if path.startswith("/expenses/categories/") and request.method == "PATCH":
+            return httpx.Response(
+                200, json=self._expense_category_from_request(request, update=True)
+            )
+        if path == "/expenses/claims" and request.method == "POST":
+            return httpx.Response(201, json=self._expense_claim_from_request(request))
+        if path == "/expenses/claims":
+            return httpx.Response(200, json=self._expense_claim_page())
+        if path.startswith("/expenses/claims/"):
+            parts = path.split("/")
+            if len(parts) == 4 and request.method == "PATCH":
+                return httpx.Response(
+                    200, json=self._expense_claim_from_request(request, update=True)
+                )
+            if len(parts) == 4:
+                return httpx.Response(200, json=self._expense_claim())
+            if len(parts) == 5 and parts[4] == "reimburse":
+                return httpx.Response(
+                    200,
+                    json=self._expense_claim_from_request(request, status="reimbursed"),
+                )
+            if len(parts) == 5 and parts[4] in {"submit", "approve", "reject", "cancel"}:
+                action_status = {"submit": "submitted", "approve": "approved"}
+                action_status.update({"reject": "rejected", "cancel": "cancelled"})
+                return httpx.Response(
+                    200,
+                    json=self._expense_claim_from_request(request, status=action_status[parts[4]]),
+                )
         if path == "/users":
             return httpx.Response(200, json=self._membership_page())
         if path == "/roles":
@@ -731,6 +770,117 @@ class FakeApi:
         enrollment["end_note"] = body["note"]
         enrollment["version"] = 2
         return enrollment
+
+    @staticmethod
+    def _expense_category(status: str = "active") -> dict[str, Any]:
+        return {
+            "id": EXPENSE_CATEGORY_ID,
+            "organization_id": ORGANIZATION_ID,
+            "company_id": COMPANY_ID,
+            "code": "TRAVEL",
+            "name": "Business travel",
+            "description": "Approved business travel expenses.",
+            "expense_account_id": ACCOUNT_ONE,
+            "expense_account_code": "5000",
+            "expense_account_name": "Payroll expense",
+            "status": status,
+            "created_at": "2026-01-02T08:00:00Z",
+            "version": 1,
+        }
+
+    @staticmethod
+    def _expense_claim(status: str = "draft") -> dict[str, Any]:
+        return {
+            "id": EXPENSE_CLAIM_ID,
+            "organization_id": ORGANIZATION_ID,
+            "company_id": COMPANY_ID,
+            "employee_id": EMPLOYEE_ID,
+            "employee_number": "EMP-0001",
+            "employee_name": "Achieng Otieno",
+            "category_id": EXPENSE_CATEGORY_ID,
+            "category_code": "TRAVEL",
+            "category_name": "Business travel",
+            "expense_account_id": ACCOUNT_ONE,
+            "expense_account_code": "5000",
+            "expense_account_name": "Payroll expense",
+            "claim_number": "EXP-2026-0001",
+            "expense_date": "2026-11-03",
+            "description": "Client workshop transport",
+            "amount": "2750.00",
+            "currency": "KES",
+            "receipt_number": "RCT-2026-1103",
+            "receipt_date": "2026-11-03",
+            "receipt_merchant": "Nairobi Shuttle Co.",
+            "status": status,
+            "requested_by": USER_ID,
+            "requested_by_name": "Amina Admin",
+            "submitted_at": "2026-11-04T09:00:00Z" if status != "draft" else None,
+            "decided_by": USER_ID if status in {"approved", "rejected"} else None,
+            "decided_by_name": "Amina Admin" if status in {"approved", "rejected"} else None,
+            "decided_at": "2026-11-04T10:00:00Z" if status in {"approved", "rejected"} else None,
+            "decision_note": "Business purpose verified." if status == "approved" else None,
+            "paid_by": USER_ID if status == "reimbursed" else None,
+            "paid_by_name": "Amina Admin" if status == "reimbursed" else None,
+            "paid_on": "2026-11-05" if status == "reimbursed" else None,
+            "paid_at": "2026-11-05T11:00:00Z" if status == "reimbursed" else None,
+            "payment_reference": "BANK-EXP-0001" if status == "reimbursed" else None,
+            "journal_id": JOURNAL_ID if status == "reimbursed" else None,
+            "cancelled_by": USER_ID if status == "cancelled" else None,
+            "cancelled_by_name": "Amina Admin" if status == "cancelled" else None,
+            "cancelled_at": "2026-11-04T12:00:00Z" if status == "cancelled" else None,
+            "created_at": "2026-11-04T08:00:00Z",
+            "version": 1,
+        }
+
+    @staticmethod
+    def _expense_claim_page() -> dict[str, Any]:
+        return {
+            "items": [FakeApi._expense_claim()],
+            "total": 1,
+            "page": 1,
+            "page_size": 25,
+        }
+
+    def _expense_category_from_request(
+        self, request: httpx.Request, *, update: bool = False
+    ) -> dict[str, Any]:
+        body = cast(dict[str, Any], json.loads(request.content))
+        category = self._expense_category(str(body.get("status", "active")))
+        if update:
+            for field in ("name", "expense_account_id", "description"):
+                if field in body:
+                    category[field] = body[field]
+            category["version"] = 2
+        else:
+            category["code"] = str(body["code"]).upper()
+            category["name"] = str(body["name"])
+            category["expense_account_id"] = body["expense_account_id"]
+            category["description"] = body.get("description")
+        return category
+
+    def _expense_claim_from_request(
+        self,
+        request: httpx.Request,
+        *,
+        status: str | None = None,
+        update: bool = False,
+    ) -> dict[str, Any]:
+        body = cast(dict[str, Any], json.loads(request.content))
+        claim = self._expense_claim(status or "draft")
+        for field in (
+            "employee_id",
+            "category_id",
+            "expense_date",
+            "description",
+            "amount",
+            "receipt_number",
+            "receipt_date",
+            "receipt_merchant",
+        ):
+            if field in body:
+                claim[field] = body[field]
+        claim["version"] = 2 if update else 1
+        return claim
 
     @staticmethod
     def _membership_page() -> dict[str, Any]:

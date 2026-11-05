@@ -373,6 +373,70 @@ class BenefitEnrollmentPage(BaseModel):
     page_size: int
 
 
+class ExpenseCategory(BaseModel):
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    company_id: uuid.UUID
+    code: str
+    name: str
+    description: str | None
+    expense_account_id: uuid.UUID
+    expense_account_code: str
+    expense_account_name: str
+    status: str
+    created_at: datetime
+    version: int
+
+
+class ExpenseClaim(BaseModel):
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    company_id: uuid.UUID
+    employee_id: uuid.UUID
+    employee_number: str
+    employee_name: str
+    category_id: uuid.UUID
+    category_code: str
+    category_name: str
+    expense_account_id: uuid.UUID
+    expense_account_code: str
+    expense_account_name: str
+    claim_number: str
+    expense_date: date
+    description: str
+    amount: Decimal
+    currency: str
+    receipt_number: str | None
+    receipt_date: date | None
+    receipt_merchant: str | None
+    status: str
+    requested_by: uuid.UUID
+    requested_by_name: str
+    submitted_at: datetime | None
+    decided_by: uuid.UUID | None
+    decided_by_name: str | None
+    decided_at: datetime | None
+    decision_note: str | None
+    paid_by: uuid.UUID | None
+    paid_by_name: str | None
+    paid_on: date | None
+    paid_at: datetime | None
+    payment_reference: str | None
+    journal_id: uuid.UUID | None
+    cancelled_by: uuid.UUID | None
+    cancelled_by_name: str | None
+    cancelled_at: datetime | None
+    created_at: datetime
+    version: int
+
+
+class ExpenseClaimPage(BaseModel):
+    items: list[ExpenseClaim]
+    total: int
+    page: int
+    page_size: int
+
+
 class Account(BaseModel):
     id: uuid.UUID
     company_id: uuid.UUID

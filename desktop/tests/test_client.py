@@ -126,6 +126,74 @@ def test_benefit_client_manages_plans_and_enrolments() -> None:
     assert ended.end_note == "Employee opted out."
 
 
+def test_expense_client_manages_categories_claims_and_reimbursement() -> None:
+    api = FakeApi()
+    client = _client(api)
+    client.login("nexus-demo", "admin@nexus.co.ke", "NexusDemo!2026")
+
+    categories = client.list_expense_categories(COMPANY_ID)
+    assert len(categories) == 1
+    category = categories[0]
+    assert category.code == "TRAVEL"
+    assert category.expense_account_code == "5000"
+
+    claims = client.list_expense_claims(COMPANY_ID)
+    assert claims.total == 1
+    claim = claims.items[0]
+    assert claim.claim_number == "EXP-2026-0001"
+    assert claim.status == "draft"
+    assert claim.receipt_merchant == "Nairobi Shuttle Co."
+
+    created_category = client.create_expense_category(
+        company_id=COMPANY_ID,
+        code="OFFICE",
+        name="Office supplies",
+        expense_account_id=str(category.expense_account_id),
+        description="Stationery and supplies",
+    )
+    assert created_category.code == "OFFICE"
+
+    created_claim = client.create_expense_claim(
+        company_id=COMPANY_ID,
+        employee_id=str(claim.employee_id),
+        category_id=str(category.id),
+        expense_date=date(2026, 11, 3),
+        description="Client workshop transport",
+        amount="2750.00",
+        receipt_number="RCT-2026-1103",
+        receipt_date=date(2026, 11, 3),
+        receipt_merchant="Nairobi Shuttle Co.",
+    )
+    assert created_claim.amount == 2750
+
+    updated_claim = client.update_expense_claim(
+        str(claim.id),
+        version=claim.version,
+        employee_id=str(claim.employee_id),
+        category_id=str(category.id),
+        expense_date=date(2026, 11, 3),
+        description="Client workshop transport revised",
+        amount="2800.00",
+        receipt_number="RCT-2026-1103",
+        receipt_date=date(2026, 11, 3),
+        receipt_merchant="Nairobi Shuttle Co.",
+    )
+    assert updated_claim.description == "Client workshop transport revised"
+
+    submitted = client.expense_action(str(claim.id), "submit", version=claim.version)
+    assert submitted.status == "submitted"
+    approved = client.expense_action(str(claim.id), "approve", version=submitted.version)
+    assert approved.status == "approved"
+    reimbursed = client.reimburse_expense_claim(
+        str(claim.id),
+        version=approved.version,
+        paid_on=date(2026, 11, 5),
+        reference="BANK-EXP-0001",
+    )
+    assert reimbursed.status == "reimbursed"
+    assert reimbursed.journal_id is not None
+
+
 def test_structured_api_error_envelope_is_preserved() -> None:
     api = FakeApi()
     api.error_overrides["/roles"] = (
