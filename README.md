@@ -77,6 +77,7 @@ backend/
   src/nexus_api/           authoritative FastAPI service
     accounting/            journals, chart of accounts, trial balance
     employees/             people and compensation
+    expenses/              categories, claims and reimbursement posting
     identity/              authentication, RBAC, memberships, roles
     leave/                 leave types, balances, requests, holidays, attendance
     organizations/         tenant, company, branch and department structures
