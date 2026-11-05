@@ -21,6 +21,7 @@ from nexus_api.leave.models import (
     LeaveRequest,
     LeaveType,
 )
+from nexus_api.loans.models import EmployeeLoan, LoanInstallment
 from nexus_api.organizations.models import (
     Branch,
     Company,
@@ -51,6 +52,7 @@ __all__ = [
     "Employee",
     "EmployeeBankAccount",
     "EmployeeCompensation",
+    "EmployeeLoan",
     "FiscalCalendarMarker",
     "FiscalPeriod",
     "Journal",
@@ -58,6 +60,7 @@ __all__ = [
     "LeaveBalance",
     "LeaveRequest",
     "LeaveType",
+    "LoanInstallment",
     "LoginEvent",
     "Organization",
     "OrganizationMembership",

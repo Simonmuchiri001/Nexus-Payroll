@@ -22,6 +22,7 @@ from nexus_desktop.ui.pages.access import AccessPage
 from nexus_desktop.ui.pages.accounting import AccountingPage
 from nexus_desktop.ui.pages.employees import EmployeesPage
 from nexus_desktop.ui.pages.leave import LeavePage
+from nexus_desktop.ui.pages.loans import LoansPage
 from nexus_desktop.ui.pages.payroll import PayrollPage, PayrollSetupDialog
 
 
@@ -127,6 +128,7 @@ def test_main_window_loads_every_page_and_switches_theme(
         "Overview",
         "People",
         "Leave",
+        "Loans",
         "Payroll",
         "Accounting",
         "Access",
@@ -156,6 +158,19 @@ def test_main_window_loads_every_page_and_switches_theme(
     assert badge.text() == "Present"
 
     window.navigation.setCurrentRow(3)
+    loans = window.stack.currentWidget()
+    assert isinstance(loans, LoansPage)
+    qtbot.waitUntil(lambda: loans.loans_table.rowCount() == 1, timeout=8_000)
+    assert loans.loans_table.item(0, 0).text() == "Achieng Otieno"
+    assert loans.loans_table.item(0, 1).text() == "LN-2026-0001"
+    qtbot.waitUntil(lambda: loans.schedule_table.rowCount() == 2, timeout=8_000)
+    assert loans.detail_status.text() == "Disbursed"
+    assert loans.detail_status.isVisible()
+    assert loans.principal_metric.text() == "KES 60,000.00"
+    assert loans.progress_metric.text() == "4/12 instalments"
+    assert loans.disburse_button.isEnabled() is False
+
+    window.navigation.setCurrentRow(4)
     payroll = window.stack.currentWidget()
     assert isinstance(payroll, PayrollPage)
     qtbot.waitUntil(lambda: payroll.runs_table.rowCount() == 1, timeout=8_000)
@@ -163,14 +178,14 @@ def test_main_window_loads_every_page_and_switches_theme(
     assert payroll.runs_table.item(0, 0).text() == "PR-202610-0001"
     assert payroll.results_table.item(0, 0).text() == "Achieng Otieno"
 
-    window.navigation.setCurrentRow(4)
+    window.navigation.setCurrentRow(5)
     accounting = window.stack.currentWidget()
     assert isinstance(accounting, AccountingPage)
     qtbot.waitUntil(lambda: accounting.balance_badge.text() == "Balanced", timeout=8_000)
     assert accounting.accounts_table.rowCount() == 2
     assert accounting.journals_table.rowCount() == 1
 
-    window.navigation.setCurrentRow(5)
+    window.navigation.setCurrentRow(6)
     access = window.stack.currentWidget()
     assert isinstance(access, AccessPage)
     qtbot.waitUntil(lambda: access.table.rowCount() == 1, timeout=8_000)

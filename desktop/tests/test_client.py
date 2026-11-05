@@ -50,6 +50,28 @@ def test_login_rotates_on_401_and_revokes_on_logout() -> None:
     assert client.is_authenticated is False
 
 
+def test_loan_client_lists_and_reads_repayment_schedule() -> None:
+    api = FakeApi()
+    client = _client(api)
+    client.login("nexus-demo", "admin@nexus.co.ke", "NexusDemo!2026")
+
+    page = client.list_loans(COMPANY_ID)
+    assert page.total == 1
+    loan = page.items[0]
+    assert loan.loan_number == "LN-2026-0001"
+    assert loan.employee_name == "Achieng Otieno"
+
+    detail = client.loan_detail(str(loan.id))
+    assert detail.loan.status == "disbursed"
+    assert len(detail.installments) == 2
+    assert detail.installments[0].status == "deducted"
+    assert detail.installments[1].status == "scheduled"
+
+    approved = client.loan_action(str(loan.id), "approve", version=loan.version)
+    assert approved.loan.status == "approved"
+    assert approved.installments == []
+
+
 def test_structured_api_error_envelope_is_preserved() -> None:
     api = FakeApi()
     api.error_overrides["/roles"] = (

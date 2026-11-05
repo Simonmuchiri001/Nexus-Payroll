@@ -216,6 +216,11 @@ def _stylesheet(t: Theme) -> str:
         font-size: 11px;
         font-weight: 500;
     }}
+    QLabel[role="metric-small"] {{
+        color: {t.ink};
+        font-size: 15px;
+        font-weight: 600;
+    }}
     QLabel[role="error"] {{
         color: {t.danger};
         background: {t.danger_soft};

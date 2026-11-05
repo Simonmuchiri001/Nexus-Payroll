@@ -27,6 +27,7 @@ from nexus_api.core.errors import (
 )
 from nexus_api.identity.permissions import PermissionCode
 from nexus_api.identity.service import AuthContext, validate_company_access
+from nexus_api.loans.models import EmployeeLoan
 from nexus_api.organizations.models import Company, CostCentre
 from nexus_api.payroll.models import PayrollResult, PayrollRun
 
@@ -35,6 +36,7 @@ CENT = Decimal("0.01")
 DEFAULT_CHART: tuple[tuple[str, str, str, str], ...] = (
     ("1000", "Cash at Bank", "asset", "debit"),
     ("1100", "Accounts Receivable", "asset", "debit"),
+    ("1200", "Employee Loans Receivable", "asset", "debit"),
     ("2000", "Accounts Payable", "liability", "credit"),
     ("2100", "PAYE Payable", "liability", "credit"),
     ("2110", "NSSF Payable", "liability", "credit"),
@@ -44,12 +46,15 @@ DEFAULT_CHART: tuple[tuple[str, str, str, str], ...] = (
     ("2200", "Net Pay Payable", "liability", "credit"),
     ("3000", "Retained Earnings", "equity", "credit"),
     ("4000", "Revenue", "revenue", "credit"),
+    ("4100", "Interest Income", "revenue", "credit"),
     ("5100", "Salaries and Wages", "expense", "debit"),
     ("5200", "Employer Statutory Contributions", "expense", "debit"),
     ("5300", "General Expenses", "expense", "debit"),
 )
 
 SYSTEM_CODES = {
+    "cash": "1000",
+    "loan_receivable": "1200",
     "salary_expense": "5100",
     "employer_expense": "5200",
     "paye_payable": "2100",
@@ -58,6 +63,7 @@ SYSTEM_CODES = {
     "housing_payable": "2130",
     "nita_payable": "2140",
     "net_pay_payable": "2200",
+    "interest_income": "4100",
 }
 
 
@@ -534,9 +540,20 @@ async def post_payroll_run(session: AsyncSession, context: AuthContext, run: Pay
         )
     )
     nita_total = _run_nita_total(results)
+    loan_principal_total = _money(
+        sum((result.loan_principal for result in results), Decimal("0.00"))
+    )
+    loan_interest_total = _money(sum((result.loan_interest for result in results), Decimal("0.00")))
+    loan_total = _money(loan_principal_total + loan_interest_total)
     debit_total = _money(run.gross_total + employer_total)
     credit_total = _money(
-        run.paye_total + nssf_total + shif_total + housing_total + nita_total + run.net_total
+        run.paye_total
+        + nssf_total
+        + shif_total
+        + housing_total
+        + nita_total
+        + run.net_total
+        + loan_total
     )
     if debit_total != credit_total:
         raise IntegrityError("Payroll posting is not balanced; the journal was not created.")
@@ -571,6 +588,12 @@ async def post_payroll_run(session: AsyncSession, context: AuthContext, run: Pay
         (SYSTEM_CODES["shif_payable"], "SHIF payable", shif_total),
         (SYSTEM_CODES["housing_payable"], "Affordable Housing Levy payable", housing_total),
         (SYSTEM_CODES["nita_payable"], "NITA payable", nita_total),
+        (
+            SYSTEM_CODES["loan_receivable"],
+            "Employee loan principal recovered",
+            loan_principal_total,
+        ),
+        (SYSTEM_CODES["interest_income"], "Employee loan interest income", loan_interest_total),
         (SYSTEM_CODES["net_pay_payable"], "Net pay payable", run.net_total),
     ]
     sequence = 1
@@ -619,6 +642,121 @@ async def post_payroll_run(session: AsyncSession, context: AuthContext, run: Pay
             "journal_id": str(journal.id),
             "journal_number": journal.journal_number,
             "total_debit": str(debit_total),
+        },
+    )
+    return journal
+
+
+async def post_loan_disbursement(
+    session: AsyncSession, context: AuthContext, loan: EmployeeLoan
+) -> Journal:
+    """Record the cash disbursement of an approved loan exactly once."""
+
+    existing = await session.scalar(
+        select(Journal).where(
+            Journal.company_id == loan.company_id,
+            Journal.source_type == "employee_loan",
+            Journal.source_id == loan.id,
+        )
+    )
+    if existing is not None:
+        return existing
+
+    if loan.disbursed_on is None:
+        raise IntegrityError("The loan has no disbursement date and cannot be posted.")
+    if loan.principal_amount <= 0:
+        raise IntegrityError("The loan principal must be positive before disbursement.")
+
+    company = await session.get(Company, loan.company_id)
+    if company is None:
+        raise NotFoundError("Company not found.")
+    await ensure_default_chart(session, company)
+    period = await session.scalar(
+        select(FiscalPeriod).where(
+            FiscalPeriod.company_id == company.id,
+            FiscalPeriod.start_date <= loan.disbursed_on,
+            FiscalPeriod.end_date >= loan.disbursed_on,
+        )
+    )
+    if period is None:
+        raise ConfigurationError(
+            "No fiscal period covers the loan disbursement date. Create the fiscal calendar first."
+        )
+    if period.status != "open":
+        raise ConflictError("The loan disbursement date falls in a locked or closed fiscal period.")
+
+    accounts = {
+        account.code: account
+        for account in (
+            await session.scalars(
+                select(Account).where(
+                    Account.company_id == company.id,
+                    Account.code.in_((SYSTEM_CODES["cash"], SYSTEM_CODES["loan_receivable"])),
+                    Account.is_active.is_(True),
+                )
+            )
+        ).all()
+    }
+    missing = sorted({SYSTEM_CODES["cash"], SYSTEM_CODES["loan_receivable"]} - set(accounts))
+    if missing:
+        raise ConfigurationError(
+            "The loan disbursement account mapping is incomplete.",
+            details={"missing_account_codes": missing},
+        )
+
+    amount = _money(loan.principal_amount)
+    journal = Journal(
+        organization_id=loan.organization_id,
+        company_id=loan.company_id,
+        journal_number=await _next_journal_number(session, loan.company_id, loan.disbursed_on),
+        journal_date=loan.disbursed_on,
+        description=f"Disbursement of employee {loan.kind} {loan.loan_number}",
+        reference=loan.loan_number,
+        status="posted",
+        currency=loan.currency,
+        total_debit=amount,
+        total_credit=amount,
+        source_type="employee_loan",
+        source_id=loan.id,
+        created_by=context.user.id,
+        posted_by=context.user.id,
+        posted_at=datetime.now(UTC),
+    )
+    session.add(journal)
+    await session.flush()
+    session.add_all(
+        [
+            JournalLine(
+                journal_id=journal.id,
+                line_number=1,
+                account_id=accounts[SYSTEM_CODES["loan_receivable"]].id,
+                description=f"Principal receivable from {loan.loan_number}",
+                debit=amount,
+                credit=Decimal("0.00"),
+            ),
+            JournalLine(
+                journal_id=journal.id,
+                line_number=2,
+                account_id=accounts[SYSTEM_CODES["cash"]].id,
+                description=f"Cash disbursed for {loan.loan_number}",
+                debit=Decimal("0.00"),
+                credit=amount,
+            ),
+        ]
+    )
+    await session.flush()
+    await record_audit(
+        session,
+        organization_id=loan.organization_id,
+        actor_user_id=context.user.id,
+        action="employee_loan.disbursed",
+        entity_type="employee_loan",
+        entity_id=loan.id,
+        metadata={
+            "loan_number": loan.loan_number,
+            "journal_id": str(journal.id),
+            "journal_number": journal.journal_number,
+            "amount": str(amount),
         },
     )
     return journal

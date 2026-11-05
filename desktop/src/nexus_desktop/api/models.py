@@ -255,6 +255,70 @@ class AttendancePage(BaseModel):
     page_size: int
 
 
+class LoanInstallment(BaseModel):
+    id: uuid.UUID
+    loan_id: uuid.UUID
+    sequence: int
+    due_date: date
+    principal_due: Decimal
+    interest_due: Decimal
+    amount_due: Decimal
+    status: str
+    payroll_run_id: uuid.UUID | None
+    payroll_result_id: uuid.UUID | None
+    deducted_at: datetime | None
+
+
+class Loan(BaseModel):
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    company_id: uuid.UUID
+    employee_id: uuid.UUID
+    employee_number: str
+    employee_name: str
+    loan_number: str
+    kind: str
+    principal_amount: Decimal
+    currency: str
+    interest_rate_annual: Decimal
+    term_months: int
+    purpose: str
+    status: str
+    requested_by: uuid.UUID | None
+    requested_by_name: str | None
+    decided_by: uuid.UUID | None
+    decided_by_name: str | None
+    decided_at: datetime | None
+    decision_note: str | None
+    cancelled_by: uuid.UUID | None
+    cancelled_at: datetime | None
+    disbursed_by: uuid.UUID | None
+    disbursed_on: date | None
+    disbursed_at: datetime | None
+    disbursement_reference: str | None
+    first_due_date: date | None
+    journal_id: uuid.UUID | None
+    closed_at: datetime | None
+    total_repayable: Decimal
+    outstanding_principal: Decimal
+    installments_paid: int
+    installments_total: int
+    created_at: datetime
+    version: int
+
+
+class LoanPage(BaseModel):
+    items: list[Loan]
+    total: int
+    page: int
+    page_size: int
+
+
+class LoanDetail(BaseModel):
+    loan: Loan
+    installments: list[LoanInstallment]
+
+
 class Account(BaseModel):
     id: uuid.UUID
     company_id: uuid.UUID

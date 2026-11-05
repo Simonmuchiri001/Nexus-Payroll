@@ -26,6 +26,9 @@ HOLIDAY_ID = "12121212-1212-1212-1212-121212121212"
 LEAVE_BALANCE_ID = "13131313-1313-1313-1313-131313131313"
 LEAVE_REQUEST_ID = "14141414-1414-1414-1414-141414141414"
 ATTENDANCE_ID = "15151515-1515-1515-1515-151515151515"
+LOAN_ID = "16161616-1616-1616-1616-161616161616"
+LOAN_INSTALLMENT_ONE = "17171717-1717-1717-1717-171717171717"
+LOAN_INSTALLMENT_TWO = "18181818-1818-1818-1818-181818181818"
 
 ALL_PERMISSIONS = [
     "organization.view",
@@ -46,6 +49,10 @@ ALL_PERMISSIONS = [
     "leave.manage",
     "attendance.view",
     "attendance.manage",
+    "loan.view",
+    "loan.request",
+    "loan.approve",
+    "loan.disburse",
     "payroll.view",
     "payroll.calculate",
     "payroll.approve",
@@ -148,6 +155,16 @@ class FakeApi:
             return httpx.Response(200, json=[self._holiday()])
         if path == "/attendance":
             return httpx.Response(200, json=self._attendance_page())
+        if path == "/loans" and request.method == "POST":
+            return httpx.Response(201, json=self._loan_from_request(request))
+        if path == "/loans":
+            return httpx.Response(200, json=self._loan_page())
+        if path.startswith("/loans/"):
+            parts = path.split("/")
+            if len(parts) == 3:
+                return httpx.Response(200, json=self._loan_detail())
+            if len(parts) == 4 and parts[3] in {"approve", "reject", "cancel", "disburse"}:
+                return httpx.Response(200, json=self._loan_detail(parts[3]))
         if path == "/users":
             return httpx.Response(200, json=self._membership_page())
         if path == "/roles":
@@ -482,6 +499,117 @@ class FakeApi:
             "page": 1,
             "page_size": 100,
         }
+
+    @staticmethod
+    def _loan(status: str = "disbursed") -> dict[str, Any]:
+        return {
+            "id": LOAN_ID,
+            "organization_id": ORGANIZATION_ID,
+            "company_id": COMPANY_ID,
+            "employee_id": EMPLOYEE_ID,
+            "employee_number": "EMP-0001",
+            "employee_name": "Achieng Otieno",
+            "loan_number": "LN-2026-0001",
+            "kind": "loan",
+            "principal_amount": "60000.00",
+            "currency": "KES",
+            "interest_rate_annual": "12.0000",
+            "term_months": 12,
+            "purpose": "Medical cover and business costs",
+            "status": status,
+            "requested_by": USER_ID,
+            "requested_by_name": "Amina Admin",
+            "decided_by": USER_ID,
+            "decided_by_name": "Amina Admin",
+            "decided_at": "2026-09-15T09:00:00Z",
+            "decision_note": "Approved within policy.",
+            "cancelled_by": None,
+            "cancelled_at": None,
+            "disbursed_by": USER_ID,
+            "disbursed_on": "2026-09-20",
+            "disbursed_at": "2026-09-20T10:00:00Z",
+            "disbursement_reference": "DISB-LN-2026-0001",
+            "first_due_date": "2026-09-30",
+            "journal_id": JOURNAL_ID,
+            "closed_at": None,
+            "total_repayable": "63900.00",
+            "outstanding_principal": "40000.00",
+            "installments_paid": 4,
+            "installments_total": 12,
+            "created_at": "2026-09-14T08:00:00Z",
+            "version": 2,
+        }
+
+    def _loan_page(self) -> dict[str, Any]:
+        return {
+            "items": [self._loan()],
+            "total": 1,
+            "page": 1,
+            "page_size": 100,
+        }
+
+    def _loan_detail(self, action: str | None = None) -> dict[str, Any]:
+        status = {
+            "approve": "approved",
+            "reject": "rejected",
+            "cancel": "cancelled",
+            "disburse": "disbursed",
+        }.get(action or "", "disbursed")
+        loan = self._loan(status)
+        if status == "approved":
+            installments: list[dict[str, Any]] = []
+        else:
+            installments = [
+                {
+                    "id": LOAN_INSTALLMENT_ONE,
+                    "loan_id": LOAN_ID,
+                    "sequence": 1,
+                    "due_date": "2026-09-30",
+                    "principal_due": "8000.00",
+                    "interest_due": "200.00",
+                    "amount_due": "8200.00",
+                    "status": "deducted",
+                    "payroll_run_id": RUN_ID,
+                    "payroll_result_id": RESULT_ID,
+                    "deducted_at": "2026-09-30T18:00:00Z",
+                },
+                {
+                    "id": LOAN_INSTALLMENT_TWO,
+                    "loan_id": LOAN_ID,
+                    "sequence": 2,
+                    "due_date": "2026-10-31",
+                    "principal_due": "8000.00",
+                    "interest_due": "150.00",
+                    "amount_due": "8150.00",
+                    "status": "scheduled",
+                    "payroll_run_id": None,
+                    "payroll_result_id": None,
+                    "deducted_at": None,
+                },
+            ]
+        return {"loan": loan, "installments": installments}
+
+    def _loan_from_request(self, request: httpx.Request) -> dict[str, Any]:
+        body = cast(dict[str, Any], json.loads(request.content))
+        loan = self._loan("pending")
+        loan["employee_id"] = body["employee_id"]
+        loan["kind"] = body["kind"]
+        loan["principal_amount"] = body["principal_amount"]
+        loan["interest_rate_annual"] = body["interest_rate_annual"]
+        loan["term_months"] = body["term_months"]
+        loan["purpose"] = body["purpose"]
+        loan["total_repayable"] = body["principal_amount"]
+        loan["outstanding_principal"] = body["principal_amount"]
+        loan["installments_paid"] = 0
+        loan["installments_total"] = 0
+        loan["loan_number"] = "ADV-2026-0001" if body["kind"] == "advance" else "LN-2026-0002"
+        loan["decision_note"] = None
+        loan["disbursed_on"] = None
+        loan["disbursement_reference"] = None
+        loan["first_due_date"] = None
+        loan["journal_id"] = None
+        loan["version"] = 1
+        return loan
 
     @staticmethod
     def _membership_page() -> dict[str, Any]:

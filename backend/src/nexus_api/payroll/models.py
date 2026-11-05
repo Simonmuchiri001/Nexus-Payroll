@@ -137,6 +137,7 @@ class PayrollRun(Base, UUIDPrimaryKeyMixin, TimestampMixin, OptimisticLockMixin)
         ),
         CheckConstraint("gross_total >= 0", name="gross_non_negative"),
         CheckConstraint("net_total >= 0", name="net_non_negative"),
+        CheckConstraint("loan_deduction_total >= 0", name="loan_deduction_non_negative"),
         CheckConstraint(
             "approved_by IS NULL OR approved_by <> prepared_by",
             name="approver_separation_of_duties",
@@ -180,6 +181,9 @@ class PayrollRun(Base, UUIDPrimaryKeyMixin, TimestampMixin, OptimisticLockMixin)
     deductions_total: Mapped[Decimal] = mapped_column(
         Numeric(20, 2), nullable=False, default=Decimal("0.00")
     )
+    loan_deduction_total: Mapped[Decimal] = mapped_column(
+        Numeric(20, 2), nullable=False, default=Decimal("0.00"), server_default="0"
+    )
     net_total: Mapped[Decimal] = mapped_column(
         Numeric(20, 2), nullable=False, default=Decimal("0.00")
     )
@@ -214,6 +218,15 @@ class PayrollResult(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         CheckConstraint("gross >= 0", name="gross_non_negative"),
         CheckConstraint("net_pay >= 0", name="net_non_negative"),
         CheckConstraint("net_pay <= gross", name="net_not_above_gross"),
+        CheckConstraint("loan_deduction >= 0", name="loan_deduction_non_negative"),
+        CheckConstraint(
+            "loan_principal >= 0 AND loan_interest >= 0",
+            name="loan_split_non_negative",
+        ),
+        CheckConstraint(
+            "loan_deduction = loan_principal + loan_interest",
+            name="loan_split_reconciles",
+        ),
         Index("ix_results_run", "payroll_run_id"),
         Index("ix_results_employee", "employee_id"),
     )
@@ -239,6 +252,15 @@ class PayrollResult(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     housing_levy_employee: Mapped[Decimal] = mapped_column(Numeric(20, 2), nullable=False)
     other_deductions: Mapped[Decimal] = mapped_column(
         Numeric(20, 2), nullable=False, default=Decimal("0.00")
+    )
+    loan_deduction: Mapped[Decimal] = mapped_column(
+        Numeric(20, 2), nullable=False, default=Decimal("0.00"), server_default="0"
+    )
+    loan_principal: Mapped[Decimal] = mapped_column(
+        Numeric(20, 2), nullable=False, default=Decimal("0.00"), server_default="0"
+    )
+    loan_interest: Mapped[Decimal] = mapped_column(
+        Numeric(20, 2), nullable=False, default=Decimal("0.00"), server_default="0"
     )
     total_deductions: Mapped[Decimal] = mapped_column(Numeric(20, 2), nullable=False)
     net_pay: Mapped[Decimal] = mapped_column(Numeric(20, 2), nullable=False)

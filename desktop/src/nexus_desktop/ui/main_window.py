@@ -32,6 +32,7 @@ from nexus_desktop.ui.pages.base import BasePage
 from nexus_desktop.ui.pages.dashboard import OverviewPage
 from nexus_desktop.ui.pages.employees import EmployeesPage
 from nexus_desktop.ui.pages.leave import LeavePage
+from nexus_desktop.ui.pages.loans import LoansPage
 from nexus_desktop.ui.pages.payroll import PayrollPage
 
 
@@ -230,6 +231,7 @@ class MainWindow(QMainWindow):
             ("overview", "Overview", OverviewPage, None),
             ("people", "People", EmployeesPage, "employee.view"),
             ("leave", "Leave", LeavePage, "leave.view"),
+            ("loans", "Loans", LoansPage, "loan.view"),
             ("payroll", "Payroll", PayrollPage, "payroll.view"),
             ("accounting", "Accounting", AccountingPage, "accounting.view"),
             ("access", "Access", AccessPage, "user.view"),

@@ -29,6 +29,9 @@ from nexus_desktop.api.models import (
     LeaveRequest,
     LeaveRequestPage,
     LeaveType,
+    Loan,
+    LoanDetail,
+    LoanPage,
     Membership,
     MembershipPage,
     MeResponse,
@@ -346,6 +349,102 @@ class NexusClient:
         return self._parse(
             PayrollRun,
             self._send("POST", f"/payroll/runs/{run_id}/{action}"),
+        )
+
+    def list_loans(
+        self,
+        company_id: str,
+        *,
+        page: int = 1,
+        page_size: int = 50,
+        employee_id: str | None = None,
+        status: str | None = None,
+        kind: str | None = None,
+    ) -> LoanPage:
+        params: dict[str, Any] = {
+            "company_id": company_id,
+            "page": page,
+            "page_size": page_size,
+        }
+        if employee_id:
+            params["employee_id"] = employee_id
+        if status:
+            params["status"] = status
+        if kind:
+            params["kind"] = kind
+        return self._parse(LoanPage, self._get("/loans", params=params))
+
+    def create_loan(
+        self,
+        *,
+        company_id: str,
+        employee_id: str,
+        kind: str,
+        principal_amount: str,
+        interest_rate_annual: str,
+        term_months: int,
+        purpose: str,
+    ) -> Loan:
+        return self._parse(
+            Loan,
+            self._send(
+                "POST",
+                "/loans",
+                json_body={
+                    "company_id": company_id,
+                    "employee_id": employee_id,
+                    "kind": kind,
+                    "principal_amount": principal_amount,
+                    "interest_rate_annual": interest_rate_annual,
+                    "term_months": term_months,
+                    "purpose": purpose,
+                },
+            ),
+        )
+
+    def loan_detail(self, loan_id: str) -> LoanDetail:
+        return self._parse(LoanDetail, self._get(f"/loans/{loan_id}"))
+
+    def loan_action(
+        self,
+        loan_id: str,
+        action: str,
+        *,
+        version: int,
+        note: str | None = None,
+    ) -> LoanDetail:
+        if action not in {"approve", "reject", "cancel"}:
+            raise ValueError(f"Unsupported loan action: {action}")
+        return self._parse(
+            LoanDetail,
+            self._send(
+                "POST",
+                f"/loans/{loan_id}/{action}",
+                json_body={"version": version, "note": note},
+            ),
+        )
+
+    def disburse_loan(
+        self,
+        loan_id: str,
+        *,
+        version: int,
+        disbursed_on: date,
+        first_due_date: date,
+        reference: str,
+    ) -> LoanDetail:
+        return self._parse(
+            LoanDetail,
+            self._send(
+                "POST",
+                f"/loans/{loan_id}/disburse",
+                json_body={
+                    "version": version,
+                    "disbursed_on": disbursed_on.isoformat(),
+                    "first_due_date": first_due_date.isoformat(),
+                    "reference": reference,
+                },
+            ),
         )
 
     def list_leave_types(self, company_id: str, *, status: str | None = None) -> list[LeaveType]:

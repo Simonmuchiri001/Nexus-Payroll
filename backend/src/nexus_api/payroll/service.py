@@ -24,6 +24,7 @@ from nexus_api.core.errors import (
 from nexus_api.employees.models import Employee, EmployeeCompensation
 from nexus_api.identity.permissions import PermissionCode
 from nexus_api.identity.service import AuthContext, validate_company_access
+from nexus_api.loans.models import EmployeeLoan, LoanInstallment
 from nexus_api.organizations.models import Company
 from nexus_api.payroll.models import (
     PayGroup,
@@ -63,6 +64,9 @@ class EmployeeCalculation:
     transport_allowance: Decimal
     other_allowance: Decimal
     gross: Decimal
+    loan_deduction: Decimal
+    loan_principal: Decimal
+    loan_interest: Decimal
     taxable_income: Decimal
     paye: Decimal
     nssf_employee: Decimal
@@ -396,6 +400,10 @@ async def calculate_run(
     if run.prepared_by != context.user.id:
         context.require(PermissionCode.PAYROLL_CALCULATE, company_id=run.company_id)
 
+    from nexus_api.loans.service import release_payroll_installments
+
+    await release_payroll_installments(session, run.id, run.company_id)
+
     rules_payload = run.rules_snapshot.get("rules")
     if not isinstance(rules_payload, dict):
         raise IntegrityError("The payroll rule snapshot is malformed.")
@@ -444,6 +452,29 @@ async def calculate_run(
     for compensation in compensations:
         by_employee[compensation.employee_id].append(compensation)
 
+    loan_rows = await session.execute(
+        select(LoanInstallment, EmployeeLoan)
+        .join(EmployeeLoan, EmployeeLoan.id == LoanInstallment.loan_id)
+        .where(
+            LoanInstallment.company_id == run.company_id,
+            LoanInstallment.status == "scheduled",
+            LoanInstallment.due_date <= run.payment_date,
+            EmployeeLoan.employee_id.in_(employee_ids),
+            EmployeeLoan.status == "disbursed",
+        )
+        .order_by(
+            EmployeeLoan.disbursed_at,
+            EmployeeLoan.loan_number,
+            LoanInstallment.sequence,
+        )
+        .with_for_update(of=LoanInstallment)
+    )
+    loans_by_employee: dict[uuid.UUID, list[tuple[LoanInstallment, EmployeeLoan]]] = defaultdict(
+        list
+    )
+    for installment, loan in loan_rows.all():
+        loans_by_employee[loan.employee_id].append((installment, loan))
+
     missing = [employee for employee in employees if not by_employee.get(employee.id)]
     if missing:
         raise ValidationFailureError(
@@ -471,6 +502,7 @@ async def calculate_run(
                 run.period_end,
                 rules,
                 run.currency,
+                loans_by_employee.get(employee.id, []),
             )
         )
 
@@ -484,6 +516,7 @@ async def calculate_run(
     employee_statutory_total = Decimal("0.00")
     employer_statutory_total = Decimal("0.00")
     deductions_total = Decimal("0.00")
+    loan_deduction_total = Decimal("0.00")
     net_total = Decimal("0.00")
     employer_cost_total = Decimal("0.00")
 
@@ -507,6 +540,9 @@ async def calculate_run(
             shif_employee=calculation.shif_employee,
             housing_levy_employee=calculation.housing_levy_employee,
             other_deductions=calculation.other_deductions,
+            loan_deduction=calculation.loan_deduction,
+            loan_principal=calculation.loan_principal,
+            loan_interest=calculation.loan_interest,
             total_deductions=calculation.total_deductions,
             net_pay=calculation.net_pay,
             nssf_employer=calculation.nssf_employer,
@@ -517,6 +553,14 @@ async def calculate_run(
         )
         session.add(result)
         await session.flush()
+        for installment, _loan in loans_by_employee.get(calculation.employee.id, []):
+            if installment.status != "scheduled":
+                raise IntegrityError(
+                    "A loan instalment was claimed by another payroll run while calculating."
+                )
+            installment.status = "reserved"
+            installment.payroll_run_id = run.id
+            installment.payroll_result_id = result.id
         for sequence, line in enumerate(calculation.lines, start=1):
             session.add(
                 PayslipLine(
@@ -537,6 +581,7 @@ async def calculate_run(
             calculation.nssf_employer + calculation.housing_levy_employer + calculation.nita
         )
         deductions_total += calculation.total_deductions
+        loan_deduction_total += calculation.loan_deduction
         net_total += calculation.net_pay
         employer_cost_total += calculation.employer_cost
 
@@ -547,6 +592,7 @@ async def calculate_run(
     run.employee_statutory_total = money(employee_statutory_total)
     run.employer_statutory_total = money(employer_statutory_total)
     run.deductions_total = money(deductions_total)
+    run.loan_deduction_total = money(loan_deduction_total)
     run.net_total = money(net_total)
     run.employer_cost_total = money(employer_cost_total)
     run.status = "calculated"
@@ -581,6 +627,7 @@ def _calculate_employee(
     period_end: date,
     rules: KenyaStatutoryRules,
     currency: str,
+    loan_due: list[tuple[LoanInstallment, EmployeeLoan]],
 ) -> EmployeeCalculation:
     total_days = (period_end - period_start).days + 1
     base = Decimal("0.00")
@@ -639,7 +686,35 @@ def _calculate_employee(
     other = money(other)
     gross = money(base + housing + transport + other)
     statutory = calculate_kenya(rules, StatutoryInput(gross=gross))
-    total_deductions = statutory.total_employee_statutory
+    loan_principal = money(
+        sum((installment.principal_due for installment, _loan in loan_due), Decimal("0.00"))
+    )
+    loan_interest = money(
+        sum((installment.interest_due for installment, _loan in loan_due), Decimal("0.00"))
+    )
+    loan_deduction = money(loan_principal + loan_interest)
+    available_after_statutory = money(gross - statutory.total_employee_statutory)
+    if loan_deduction > available_after_statutory:
+        raise ValidationFailureError(
+            f"Employee {employee.employee_number} has insufficient net pay for the "
+            "scheduled loan deduction.",
+            details={
+                "employee_id": str(employee.id),
+                "employee_number": employee.employee_number,
+                "net_available": str(available_after_statutory),
+                "loan_deduction_required": str(loan_deduction),
+                "installments": [
+                    {
+                        "loan_number": loan.loan_number,
+                        "sequence": installment.sequence,
+                        "due_date": installment.due_date.isoformat(),
+                        "amount_due": str(installment.amount_due),
+                    }
+                    for installment, loan in loan_due
+                ],
+            },
+        )
+    total_deductions = money(statutory.total_employee_statutory + loan_deduction)
     net_pay = money(gross - total_deductions)
     if net_pay < 0:
         raise ValidationFailureError(
@@ -659,6 +734,7 @@ def _calculate_employee(
         statutory.nssf_employer,
         statutory.housing_employer,
         statutory.nita,
+        loan_due,
     )
     snapshot: dict[str, Any] = {
         "engine_version": ENGINE_VERSION,
@@ -667,6 +743,19 @@ def _calculate_employee(
         "payable_days": payable_days,
         "segments": segments,
         "gross": str(gross),
+        "loans": [
+            {
+                "loan_id": str(loan.id),
+                "loan_number": loan.loan_number,
+                "installment_id": str(installment.id),
+                "sequence": installment.sequence,
+                "principal": str(installment.principal_due),
+                "interest": str(installment.interest_due),
+                "amount": str(installment.amount_due),
+            }
+            for installment, loan in loan_due
+        ],
+        "loan_deduction": str(loan_deduction),
         "statutory": {
             "taxable_income": str(statutory.taxable_income),
             "paye": str(statutory.paye),
@@ -688,6 +777,9 @@ def _calculate_employee(
         transport_allowance=transport,
         other_allowance=other,
         gross=gross,
+        loan_deduction=loan_deduction,
+        loan_principal=loan_principal,
+        loan_interest=loan_interest,
         taxable_income=statutory.taxable_income,
         paye=statutory.paye,
         nssf_employee=statutory.nssf_employee,
@@ -717,6 +809,7 @@ def _lines_for(
     nssf_employer: Decimal,
     housing_employer: Decimal,
     nita: Decimal,
+    loan_due: list[tuple[LoanInstallment, EmployeeLoan]],
 ) -> tuple[CalculationLine, ...]:
     candidates = (
         CalculationLine("earning", "BASE", "Basic salary", base, True),
@@ -741,7 +834,17 @@ def _lines_for(
         ),
         CalculationLine("employer_contribution", "NITA", "NITA levy", nita, False),
     )
-    return tuple(line for line in candidates if line.amount > 0)
+    loan_lines = tuple(
+        CalculationLine(
+            "deduction",
+            "LOAN",
+            f"{loan.loan_number} instalment {installment.sequence} of {loan.term_months}",
+            installment.amount_due,
+            False,
+        )
+        for installment, loan in loan_due
+    )
+    return tuple(line for line in candidates if line.amount > 0) + loan_lines
 
 
 async def approve_run(session: AsyncSession, context: AuthContext, run_id: uuid.UUID) -> PayrollRun:
@@ -782,8 +885,11 @@ async def finalize_run(
         raise ConflictError("Only an approved payroll run can be finalised.")
     if run.prepared_by == context.user.id:
         raise ConflictError("Separation of duties: the preparer cannot finalise the payroll run.")
+    from nexus_api.loans.service import finalize_payroll_installments
+
     run.status = "finalized"
     run.finalized_at = datetime.now(UTC)
+    await finalize_payroll_installments(session, context, run)
     await session.flush()
     await record_audit(
         session,
