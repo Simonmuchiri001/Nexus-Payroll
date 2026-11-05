@@ -25,6 +25,7 @@ from nexus_api.core.errors import (
     NotFoundError,
     ValidationFailureError,
 )
+from nexus_api.expenses.models import ExpenseCategory, ExpenseClaim
 from nexus_api.identity.permissions import PermissionCode
 from nexus_api.identity.service import AuthContext, validate_company_access
 from nexus_api.loans.models import EmployeeLoan
@@ -785,6 +786,116 @@ async def post_loan_disbursement(
             "amount": str(amount),
         },
     )
+    return journal
+
+
+async def post_expense_reimbursement(
+    session: AsyncSession,
+    context: AuthContext,
+    claim: ExpenseClaim,
+    category: ExpenseCategory,
+    paid_on: date,
+    reference: str,
+) -> Journal:
+    """Record the cash reimbursement of an approved expense claim exactly once."""
+
+    existing = await session.scalar(
+        select(Journal).where(
+            Journal.company_id == claim.company_id,
+            Journal.source_type == "expense_claim",
+            Journal.source_id == claim.id,
+        )
+    )
+    if existing is not None:
+        return existing
+
+    if claim.amount <= 0:
+        raise IntegrityError("The expense claim amount must be positive before reimbursement.")
+    company = await session.get(Company, claim.company_id)
+    if company is None:
+        raise NotFoundError("Company not found.")
+    await ensure_default_chart(session, company)
+    period = await session.scalar(
+        select(FiscalPeriod).where(
+            FiscalPeriod.company_id == company.id,
+            FiscalPeriod.start_date <= paid_on,
+            FiscalPeriod.end_date >= paid_on,
+        )
+    )
+    if period is None:
+        raise ConfigurationError(
+            "No fiscal period covers the reimbursement date. Create the fiscal calendar first."
+        )
+    if period.status != "open":
+        raise ConflictError("The reimbursement date falls in a locked or closed fiscal period.")
+
+    cash = await session.scalar(
+        select(Account).where(
+            Account.company_id == company.id,
+            Account.code == SYSTEM_CODES["cash"],
+            Account.is_active.is_(True),
+        )
+    )
+    if cash is None:
+        raise ConfigurationError(
+            "The cash account for expense reimbursement is missing or inactive.",
+            details={"account_code": SYSTEM_CODES["cash"]},
+        )
+    expense_account = await session.scalar(
+        select(Account).where(
+            Account.id == category.expense_account_id,
+            Account.company_id == company.id,
+            Account.account_type == "expense",
+            Account.is_active.is_(True),
+        )
+    )
+    if expense_account is None:
+        raise ConfigurationError(
+            "The expense account mapped to this category is missing, inactive or not an "
+            "expense account."
+        )
+
+    amount = _money(claim.amount)
+    journal = Journal(
+        organization_id=claim.organization_id,
+        company_id=claim.company_id,
+        journal_number=await _next_journal_number(session, claim.company_id, paid_on),
+        journal_date=paid_on,
+        description=f"Reimbursement of expense claim {claim.claim_number}",
+        reference=reference,
+        status="posted",
+        currency=claim.currency,
+        total_debit=amount,
+        total_credit=amount,
+        source_type="expense_claim",
+        source_id=claim.id,
+        created_by=context.user.id,
+        posted_by=context.user.id,
+        posted_at=datetime.now(UTC),
+    )
+    session.add(journal)
+    await session.flush()
+    session.add_all(
+        [
+            JournalLine(
+                journal_id=journal.id,
+                line_number=1,
+                account_id=expense_account.id,
+                description=f"{category.name} expense for {claim.claim_number}",
+                debit=amount,
+                credit=Decimal("0.00"),
+            ),
+            JournalLine(
+                journal_id=journal.id,
+                line_number=2,
+                account_id=cash.id,
+                description=f"Cash reimbursed for {claim.claim_number}",
+                debit=Decimal("0.00"),
+                credit=amount,
+            ),
+        ]
+    )
+    await session.flush()
     return journal
 
 

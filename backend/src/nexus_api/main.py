@@ -24,6 +24,7 @@ from nexus_api.core.errors import NexusError
 from nexus_api.core.logging import configure_logging, get_logger
 from nexus_api.database.session import check_database
 from nexus_api.employees.router import router as employees_router
+from nexus_api.expenses.router import router as expenses_router
 from nexus_api.identity.admin_router import router as identity_admin_router
 from nexus_api.identity.router import router as identity_router
 from nexus_api.leave.router import router as leave_router
@@ -183,6 +184,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(leave_router, prefix=resolved.api_v1_prefix)
     app.include_router(loans_router, prefix=resolved.api_v1_prefix)
     app.include_router(benefits_router, prefix=resolved.api_v1_prefix)
+    app.include_router(expenses_router, prefix=resolved.api_v1_prefix)
     app.include_router(payroll_router, prefix=resolved.api_v1_prefix)
     app.include_router(accounting_router, prefix=resolved.api_v1_prefix)
     return app

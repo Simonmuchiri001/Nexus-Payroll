@@ -5,6 +5,7 @@ from nexus_api.audit.models import AuditEvent
 from nexus_api.benefits.models import BenefitEnrollment, BenefitPlan
 from nexus_api.database.base import Base
 from nexus_api.employees.models import Employee, EmployeeBankAccount, EmployeeCompensation
+from nexus_api.expenses.models import ExpenseCategory, ExpenseClaim
 from nexus_api.identity.models import (
     LoginEvent,
     OrganizationMembership,
@@ -56,6 +57,8 @@ __all__ = [
     "EmployeeBankAccount",
     "EmployeeCompensation",
     "EmployeeLoan",
+    "ExpenseCategory",
+    "ExpenseClaim",
     "FiscalCalendarMarker",
     "FiscalPeriod",
     "Journal",

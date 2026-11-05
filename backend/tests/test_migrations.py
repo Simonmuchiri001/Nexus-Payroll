@@ -71,14 +71,16 @@ def test_migration_applies_cleanly_downgrades_and_reapplies(
             assert "loan_installments" in tables
             assert "benefit_plans" in tables
             assert "benefit_enrollments" in tables
-            assert len(tables) >= 27
+            assert "expense_categories" in tables
+            assert "expense_claims" in tables
+            assert len(tables) >= 29
 
             revision = connection.scalar(
                 text(
                     f'SELECT version_num FROM "{SCHEMA_NAME}".alembic_version'  # noqa: S608
                 )
             )
-            assert revision == "952423624de4"
+            assert revision == "0edcc1c1451e"
 
             trigger_exists = connection.scalar(
                 text(
@@ -117,10 +119,11 @@ def test_migration_applies_cleanly_downgrades_and_reapplies(
                     f'SELECT version_num FROM "{SCHEMA_NAME}".alembic_version'  # noqa: S608
                 )
             )
-            assert revision == "952423624de4"
+            assert revision == "0edcc1c1451e"
             assert "organizations" in tables
             assert "journal_lines" in tables
             assert "employee_loans" in tables
             assert "benefit_enrollments" in tables
+            assert "expense_claims" in tables
     finally:
         sync_engine.dispose()
