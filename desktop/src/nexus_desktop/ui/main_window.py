@@ -28,6 +28,7 @@ from nexus_desktop.state import ApplicationSession
 from nexus_desktop.tasks import TaskRunner
 from nexus_desktop.ui.pages.access import AccessPage
 from nexus_desktop.ui.pages.accounting import AccountingPage
+from nexus_desktop.ui.pages.assets import AssetsPage
 from nexus_desktop.ui.pages.base import BasePage
 from nexus_desktop.ui.pages.benefits import BenefitsPage
 from nexus_desktop.ui.pages.dashboard import OverviewPage
@@ -238,6 +239,7 @@ class MainWindow(QMainWindow):
             ("expenses", "Expenses", ExpensesPage, "expense.view"),
             ("payroll", "Payroll", PayrollPage, "payroll.view"),
             ("accounting", "Accounting", AccountingPage, "accounting.view"),
+            ("assets", "Assets", AssetsPage, "asset.view"),
             ("access", "Access", AccessPage, "user.view"),
         ]
         for key, title, page_type, permission in definitions:

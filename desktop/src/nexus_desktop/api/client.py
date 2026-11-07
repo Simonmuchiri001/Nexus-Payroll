@@ -18,6 +18,10 @@ from pydantic import BaseModel
 
 from nexus_desktop.api.models import (
     Account,
+    AssetCategory,
+    AssetDepreciation,
+    AssetDisposal,
+    AssetPage,
     AttendancePage,
     AttendanceRecord,
     BenefitEnrollment,
@@ -29,6 +33,7 @@ from nexus_desktop.api.models import (
     ExpenseCategory,
     ExpenseClaim,
     ExpenseClaimPage,
+    FixedAsset,
     Holiday,
     JournalPage,
     LeaveBalance,
@@ -998,6 +1003,283 @@ class NexusClient:
             self._get(
                 "/accounting/journals",
                 params={"company_id": company_id, "page": page, "page_size": page_size},
+            ),
+        )
+
+    def list_asset_categories(
+        self, company_id: str, *, include_inactive: bool = False
+    ) -> list[AssetCategory]:
+        payload = self._get(
+            "/assets/categories",
+            params={
+                "company_id": company_id,
+                "include_inactive": str(include_inactive).lower(),
+            },
+        )
+        return [AssetCategory.model_validate(item) for item in cast(list[Any], payload)]
+
+    def create_asset_category(
+        self,
+        *,
+        company_id: str,
+        code: str,
+        name: str,
+        cost_account_id: str,
+        accumulated_depreciation_account_id: str,
+        depreciation_expense_account_id: str,
+        gain_loss_account_id: str,
+        description: str | None,
+    ) -> AssetCategory:
+        return self._parse(
+            AssetCategory,
+            self._send(
+                "POST",
+                "/assets/categories",
+                json_body={
+                    "company_id": company_id,
+                    "code": code,
+                    "name": name,
+                    "description": description,
+                    "cost_account_id": cost_account_id,
+                    "accumulated_depreciation_account_id": (accumulated_depreciation_account_id),
+                    "depreciation_expense_account_id": depreciation_expense_account_id,
+                    "gain_loss_account_id": gain_loss_account_id,
+                },
+            ),
+        )
+
+    def update_asset_category(
+        self,
+        category_id: str,
+        *,
+        version: int,
+        name: str,
+        cost_account_id: str,
+        accumulated_depreciation_account_id: str,
+        depreciation_expense_account_id: str,
+        gain_loss_account_id: str,
+        description: str | None,
+        is_active: bool | None = None,
+    ) -> AssetCategory:
+        body: dict[str, Any] = {
+            "version": version,
+            "name": name,
+            "description": description,
+            "cost_account_id": cost_account_id,
+            "accumulated_depreciation_account_id": accumulated_depreciation_account_id,
+            "depreciation_expense_account_id": depreciation_expense_account_id,
+            "gain_loss_account_id": gain_loss_account_id,
+        }
+        if is_active is not None:
+            body["is_active"] = is_active
+        return self._parse(
+            AssetCategory,
+            self._send("PATCH", f"/assets/categories/{category_id}", json_body=body),
+        )
+
+    def list_assets(
+        self,
+        company_id: str,
+        *,
+        page: int = 1,
+        page_size: int = 25,
+        status: str | None = None,
+        category_id: str | None = None,
+    ) -> AssetPage:
+        params: dict[str, Any] = {
+            "company_id": company_id,
+            "page": page,
+            "page_size": page_size,
+        }
+        if status:
+            params["status"] = status
+        if category_id:
+            params["category_id"] = category_id
+        return self._parse(AssetPage, self._get("/assets", params=params))
+
+    def create_asset(
+        self,
+        *,
+        company_id: str,
+        category_id: str,
+        asset_number: str,
+        name: str,
+        description: str | None,
+        serial_reference: str | None,
+        acquisition_date: date,
+        in_service_date: date,
+        cost: str,
+        residual_value: str,
+        useful_life_months: int,
+    ) -> FixedAsset:
+        return self._parse(
+            FixedAsset,
+            self._send(
+                "POST",
+                "/assets",
+                json_body={
+                    "company_id": company_id,
+                    "category_id": category_id,
+                    "asset_number": asset_number,
+                    "name": name,
+                    "description": description,
+                    "serial_reference": serial_reference,
+                    "acquisition_date": acquisition_date.isoformat(),
+                    "in_service_date": in_service_date.isoformat(),
+                    "cost": cost,
+                    "residual_value": residual_value,
+                    "useful_life_months": useful_life_months,
+                },
+            ),
+        )
+
+    def update_asset(
+        self,
+        asset_id: str,
+        *,
+        version: int,
+        name: str,
+        description: str | None,
+        serial_reference: str | None,
+        acquisition_date: date,
+        in_service_date: date,
+        cost: str,
+        residual_value: str,
+        useful_life_months: int,
+    ) -> FixedAsset:
+        return self._parse(
+            FixedAsset,
+            self._send(
+                "PATCH",
+                f"/assets/{asset_id}",
+                json_body={
+                    "version": version,
+                    "name": name,
+                    "description": description,
+                    "serial_reference": serial_reference,
+                    "acquisition_date": acquisition_date.isoformat(),
+                    "in_service_date": in_service_date.isoformat(),
+                    "cost": cost,
+                    "residual_value": residual_value,
+                    "useful_life_months": useful_life_months,
+                },
+            ),
+        )
+
+    def submit_asset(self, asset_id: str, *, version: int) -> FixedAsset:
+        return self._parse(
+            FixedAsset,
+            self._send(
+                "POST",
+                f"/assets/{asset_id}/submit",
+                json_body={"version": version},
+            ),
+        )
+
+    def approve_asset(
+        self,
+        asset_id: str,
+        *,
+        version: int,
+        funding_account_id: str,
+        reference: str,
+        note: str | None,
+    ) -> FixedAsset:
+        return self._parse(
+            FixedAsset,
+            self._send(
+                "POST",
+                f"/assets/{asset_id}/approve",
+                json_body={
+                    "version": version,
+                    "funding_account_id": funding_account_id,
+                    "reference": reference,
+                    "note": note,
+                },
+            ),
+        )
+
+    def reject_asset(self, asset_id: str, *, version: int, note: str | None) -> FixedAsset:
+        return self._parse(
+            FixedAsset,
+            self._send(
+                "POST",
+                f"/assets/{asset_id}/reject",
+                json_body={"version": version, "note": note},
+            ),
+        )
+
+    def cancel_asset(self, asset_id: str, *, version: int, note: str | None) -> FixedAsset:
+        return self._parse(
+            FixedAsset,
+            self._send(
+                "POST",
+                f"/assets/{asset_id}/cancel",
+                json_body={"version": version, "note": note},
+            ),
+        )
+
+    def list_asset_depreciation(self, asset_id: str) -> list[AssetDepreciation]:
+        payload = self._get(f"/assets/{asset_id}/depreciation")
+        return [AssetDepreciation.model_validate(item) for item in cast(list[Any], payload)]
+
+    def depreciate_asset(
+        self,
+        asset_id: str,
+        *,
+        period_start: date,
+        period_end: date,
+        reference: str | None,
+    ) -> AssetDepreciation:
+        return self._parse(
+            AssetDepreciation,
+            self._send(
+                "POST",
+                f"/assets/{asset_id}/depreciate",
+                json_body={
+                    "period_start": period_start.isoformat(),
+                    "period_end": period_end.isoformat(),
+                    "reference": reference,
+                },
+            ),
+        )
+
+    def dispose_asset(
+        self,
+        asset_id: str,
+        *,
+        version: int,
+        disposal_date: date,
+        proceeds_amount: str,
+        proceeds_account_id: str,
+        reason: str,
+    ) -> AssetDisposal:
+        return self._parse(
+            AssetDisposal,
+            self._send(
+                "POST",
+                f"/assets/{asset_id}/dispose",
+                json_body={
+                    "version": version,
+                    "disposal_date": disposal_date.isoformat(),
+                    "proceeds_amount": proceeds_amount,
+                    "proceeds_account_id": proceeds_account_id,
+                    "reason": reason,
+                },
+            ),
+        )
+
+    def asset_disposal_action(
+        self, asset_id: str, action: str, *, version: int, note: str | None
+    ) -> AssetDisposal:
+        if action not in {"approve", "reject"}:
+            raise ValueError(f"Unsupported asset disposal action: {action}")
+        return self._parse(
+            AssetDisposal,
+            self._send(
+                "POST",
+                f"/assets/{asset_id}/dispose/{action}",
+                json_body={"version": version, "note": note},
             ),
         )
 

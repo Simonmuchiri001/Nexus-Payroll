@@ -20,6 +20,7 @@ from nexus_desktop.ui.login import LoginWindow
 from nexus_desktop.ui.main_window import MainWindow
 from nexus_desktop.ui.pages.access import AccessPage
 from nexus_desktop.ui.pages.accounting import AccountingPage
+from nexus_desktop.ui.pages.assets import AssetsPage
 from nexus_desktop.ui.pages.benefits import BenefitsPage
 from nexus_desktop.ui.pages.employees import EmployeesPage
 from nexus_desktop.ui.pages.expenses import ExpensesPage
@@ -135,6 +136,7 @@ def test_main_window_loads_every_page_and_switches_theme(
         "Expenses",
         "Payroll",
         "Accounting",
+        "Assets",
         "Access",
     ]
 
@@ -212,10 +214,31 @@ def test_main_window_loads_every_page_and_switches_theme(
     accounting = window.stack.currentWidget()
     assert isinstance(accounting, AccountingPage)
     qtbot.waitUntil(lambda: accounting.balance_badge.text() == "Balanced", timeout=8_000)
-    assert accounting.accounts_table.rowCount() == 2
+    assert accounting.accounts_table.rowCount() == 6
     assert accounting.journals_table.rowCount() == 1
 
     window.navigation.setCurrentRow(8)
+    assets = window.stack.currentWidget()
+    assert isinstance(assets, AssetsPage)
+    qtbot.waitUntil(lambda: assets.categories_table.rowCount() == 1, timeout=8_000)
+    qtbot.waitUntil(lambda: assets.assets_table.rowCount() == 1, timeout=8_000)
+    assert assets.categories_table.item(0, 0).text() == "MOTOR"
+    assert assets.categories_table.item(0, 2).text() == "1600 · Motor vehicles"
+    assert (
+        assets.categories_table.item(0, 3).text()
+        == "1690 · Accumulated depreciation - motor vehicles"
+    )
+    assert assets.assets_table.item(0, 0).text() == "FA-0001"
+    assert assets.assets_table.item(0, 1).text() == "Toyota Hilux"
+    assert assets.assets_table.item(0, 3).text() == "KES 120,000.00"
+    assert assets.assets_table.item(0, 4).text() == "KES 9,000.00"
+    assert assets.assets_table.item(0, 5).text() == "KES 111,000.00"
+    assert assets.new_asset_button.isEnabled() is True
+    assert assets.depreciate_button.isEnabled() is True
+    assert assets.dispose_button.isEnabled() is True
+    assert assets.approve_asset_button.isEnabled() is False
+
+    window.navigation.setCurrentRow(9)
     access = window.stack.currentWidget()
     assert isinstance(access, AccessPage)
     qtbot.waitUntil(lambda: access.table.rowCount() == 1, timeout=8_000)
@@ -281,4 +304,46 @@ def test_navigation_respects_permissions(
         timeout=8_000,
     )
     assert _nav_titles(window) == ["Overview", "People", "Payroll"]
+    window.close()
+
+
+def test_asset_page_disables_actions_without_operational_permissions(
+    qtbot: QtBot,
+    client: NexusClient,
+    tmp_path: Path,
+) -> None:
+    session = _session(client)
+    read_only_me = MeResponse.model_validate(
+        session.me.model_dump() | {"permissions": ["asset.view"]}
+    )
+    read_only = ApplicationSession(
+        client=client,
+        me=read_only_me,
+        api_url=session.api_url,
+        organization_slug=session.organization_slug,
+        email=session.email,
+        selected_company_id=session.selected_company_id,
+    )
+    window = MainWindow(read_only, _preferences(tmp_path), InMemorySessionVault())
+    qtbot.addWidget(window)
+    window.show()
+    assert _nav_titles(window) == ["Overview", "Assets"]
+    window.navigation.setCurrentRow(1)
+    assets = window.stack.currentWidget()
+    assert isinstance(assets, AssetsPage)
+    qtbot.waitUntil(lambda: assets.categories_table.rowCount() == 1, timeout=8_000)
+    qtbot.waitUntil(lambda: assets.assets_table.rowCount() == 1, timeout=8_000)
+    assert assets.new_category_button.isEnabled() is False
+    assert assets.new_asset_button.isEnabled() is False
+    assert assets.edit_category_button.isEnabled() is False
+    assert assets.toggle_category_button.isEnabled() is False
+    assert assets.edit_asset_button.isEnabled() is False
+    assert assets.submit_asset_button.isEnabled() is False
+    assert assets.approve_asset_button.isEnabled() is False
+    assert assets.reject_asset_button.isEnabled() is False
+    assert assets.cancel_asset_button.isEnabled() is False
+    assert assets.depreciate_button.isEnabled() is False
+    assert assets.dispose_button.isEnabled() is False
+    assert assets.approve_disposal_button.isEnabled() is False
+    assert assets.reject_disposal_button.isEnabled() is False
     window.close()

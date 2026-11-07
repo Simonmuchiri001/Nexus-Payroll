@@ -194,6 +194,131 @@ def test_expense_client_manages_categories_claims_and_reimbursement() -> None:
     assert reimbursed.journal_id is not None
 
 
+def test_asset_client_manages_categories_register_and_lifecycle() -> None:
+    api = FakeApi()
+    client = _client(api)
+    client.login("nexus-demo", "admin@nexus.co.ke", "NexusDemo!2026")
+
+    categories = client.list_asset_categories(COMPANY_ID)
+    assert len(categories) == 1
+    category = categories[0]
+    assert category.code == "MOTOR"
+    assert category.cost_account_id is not None
+    assert category.gain_loss_account_id is not None
+
+    created_category = client.create_asset_category(
+        company_id=COMPANY_ID,
+        code="PLANT",
+        name="Plant and machinery",
+        cost_account_id=str(category.cost_account_id),
+        accumulated_depreciation_account_id=str(category.accumulated_depreciation_account_id),
+        depreciation_expense_account_id=str(category.depreciation_expense_account_id),
+        gain_loss_account_id=str(category.gain_loss_account_id),
+        description="Production equipment",
+    )
+    assert created_category.code == "PLANT"
+
+    updated_category = client.update_asset_category(
+        str(category.id),
+        version=category.version,
+        name="Motor vehicles (revised)",
+        cost_account_id=str(category.cost_account_id),
+        accumulated_depreciation_account_id=str(category.accumulated_depreciation_account_id),
+        depreciation_expense_account_id=str(category.depreciation_expense_account_id),
+        gain_loss_account_id=str(category.gain_loss_account_id),
+        description=category.description,
+        is_active=False,
+    )
+    assert updated_category.is_active is False
+
+    register = client.list_assets(COMPANY_ID)
+    assert register.total == 1
+    asset = register.items[0]
+    assert asset.asset_number == "FA-0001"
+    assert asset.category_code == "MOTOR"
+    assert asset.cost == 120000
+    assert asset.accumulated_depreciation == 9000
+    assert asset.net_book_value == 111000
+    assert asset.status == "active"
+
+    created = client.create_asset(
+        company_id=COMPANY_ID,
+        category_id=str(asset.category_id),
+        asset_number="FA-0002",
+        name="Isuzu D-Max",
+        description="Field vehicle",
+        serial_reference="KCX-900-2026",
+        acquisition_date=date(2026, 5, 2),
+        in_service_date=date(2026, 5, 5),
+        cost="80000.00",
+        residual_value="8000.00",
+        useful_life_months=60,
+    )
+    assert created.status == "draft"
+    assert created.asset_number == "FA-0002"
+
+    updated = client.update_asset(
+        str(asset.id),
+        version=asset.version,
+        name="Toyota Hilux revised",
+        description=asset.description,
+        serial_reference=asset.serial_reference,
+        acquisition_date=asset.acquisition_date,
+        in_service_date=asset.in_service_date,
+        cost="120000.00",
+        residual_value="12000.00",
+        useful_life_months=12,
+    )
+    assert updated.name == "Toyota Hilux revised"
+
+    submitted = client.submit_asset(str(asset.id), version=asset.version)
+    assert submitted.status == "submitted"
+    approved = client.approve_asset(
+        str(asset.id),
+        version=submitted.version,
+        funding_account_id=str(category.cost_account_id),
+        reference="CAP-2026-0001",
+        note="Approved for use",
+    )
+    assert approved.status == "active"
+    assert approved.capitalization_journal_id is not None
+    approval_body = json.loads(api.requests[-1].content)
+    assert approval_body["version"] == submitted.version
+    assert approval_body["reference"] == "CAP-2026-0001"
+
+    schedule = client.list_asset_depreciation(str(asset.id))
+    assert len(schedule) == 1
+    assert schedule[0].amount == 9000
+
+    posted = client.depreciate_asset(
+        str(asset.id),
+        period_start=date(2026, 2, 1),
+        period_end=date(2026, 2, 28),
+        reference="DEP-2026-02",
+    )
+    assert posted.period_start == date(2026, 2, 1)
+    assert posted.journal_id == schedule[0].journal_id
+
+    disposal = client.dispose_asset(
+        str(asset.id),
+        version=approved.version,
+        disposal_date=date(2026, 4, 15),
+        proceeds_amount="90000.00",
+        proceeds_account_id=str(category.cost_account_id),
+        reason="Sold after replacement",
+    )
+    assert disposal.status == "pending"
+    assert disposal.proceeds_amount == 90000
+
+    decided = client.asset_disposal_action(
+        str(asset.id), "approve", version=approved.version, note="Approved disposal"
+    )
+    assert decided.status == "approved"
+    assert decided.journal_id is not None
+    disposal_body = json.loads(api.requests[-1].content)
+    assert disposal_body["version"] == approved.version
+
+
 def test_structured_api_error_envelope_is_preserved() -> None:
     api = FakeApi()
     api.error_overrides["/roles"] = (

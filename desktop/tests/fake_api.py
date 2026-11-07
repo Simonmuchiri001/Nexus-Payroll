@@ -33,6 +33,14 @@ BENEFIT_PLAN_ID = "19191919-1919-1919-1919-191919191919"
 BENEFIT_ENROLLMENT_ID = "20202020-2020-2020-2020-202020202020"
 EXPENSE_CATEGORY_ID = "21212121-2121-2121-2121-212121212121"
 EXPENSE_CLAIM_ID = "22222222-2222-2222-2222-222222222222"
+ASSET_CATEGORY_ID = "23232323-2323-2323-2323-232323232323"
+FIXED_ASSET_ID = "24242424-2424-2424-2424-242424242424"
+ASSET_DEPRECIATION_ID = "25252525-2525-2525-2525-252525252525"
+ASSET_DISPOSAL_ID = "26262626-2626-2626-2626-262626262626"
+ASSET_COST_ACCOUNT = "27272727-2727-2727-2727-272727272727"
+ASSET_ACCUMULATED_ACCOUNT = "28282828-2828-2828-2828-282828282828"
+ASSET_GAIN_LOSS_ACCOUNT = "29292929-2929-2929-2929-292929292929"
+CASH_ACCOUNT = "30303030-3030-3030-3030-303030303030"
 
 ALL_PERMISSIONS = [
     "organization.view",
@@ -75,6 +83,11 @@ ALL_PERMISSIONS = [
     "report.view",
     "rule.view",
     "rule.manage",
+    "asset.view",
+    "asset.manage",
+    "asset.approve",
+    "asset.depreciate",
+    "asset.dispose",
 ]
 
 
@@ -153,7 +166,17 @@ class FakeApi:
         if path.startswith("/payroll/runs/") and path.endswith("/results"):
             return httpx.Response(200, json=[self._result()])
         if path == "/accounting/accounts":
-            return httpx.Response(200, json=[self._account_one(), self._account_two()])
+            return httpx.Response(
+                200,
+                json=[
+                    self._account_one(),
+                    self._account_two(),
+                    self._asset_cost_account(),
+                    self._asset_accumulated_account(),
+                    self._asset_gain_loss_account(),
+                    self._cash_account(),
+                ],
+            )
         if path == "/accounting/trial-balance":
             return httpx.Response(200, json=self._trial_balance())
         if path == "/accounting/journals":
@@ -219,6 +242,43 @@ class FakeApi:
                 return httpx.Response(
                     200,
                     json=self._expense_claim_from_request(request, status=action_status[parts[4]]),
+                )
+        if path == "/assets/categories" and request.method == "POST":
+            return httpx.Response(201, json=self._asset_category_from_request(request))
+        if path == "/assets/categories":
+            return httpx.Response(200, json=[self._asset_category()])
+        if path.startswith("/assets/categories/") and request.method == "PATCH":
+            return httpx.Response(200, json=self._asset_category_from_request(request, update=True))
+        if path == "/assets" and request.method == "POST":
+            return httpx.Response(201, json=self._fixed_asset_from_request(request))
+        if path == "/assets":
+            return httpx.Response(200, json=self._asset_page())
+        if path.startswith("/assets/"):
+            parts = path.split("/")
+            if len(parts) == 3:
+                if request.method == "PATCH":
+                    return httpx.Response(
+                        200, json=self._fixed_asset_from_request(request, update=True)
+                    )
+                return httpx.Response(200, json=self._fixed_asset())
+            if len(parts) == 4 and parts[3] in {"submit", "approve", "reject", "cancel"}:
+                action_status = {
+                    "submit": "submitted",
+                    "approve": "active",
+                    "reject": "rejected",
+                    "cancel": "cancelled",
+                }
+                return httpx.Response(200, json=self._fixed_asset(action_status[parts[3]]))
+            if len(parts) == 4 and parts[3] == "depreciation":
+                return httpx.Response(200, json=[self._asset_depreciation()])
+            if len(parts) == 4 and parts[3] == "depreciate":
+                return httpx.Response(201, json=self._asset_depreciation_from_request(request))
+            if len(parts) == 4 and parts[3] == "dispose":
+                return httpx.Response(201, json=self._asset_disposal_from_request(request))
+            if len(parts) == 5 and parts[3] == "dispose" and parts[4] in {"approve", "reject"}:
+                return httpx.Response(
+                    200,
+                    json=self._asset_disposal("approved" if parts[4] == "approve" else "rejected"),
                 )
         if path == "/users":
             return httpx.Response(200, json=self._membership_page())
@@ -417,6 +477,58 @@ class FakeApi:
             "account_type": "liability",
             "normal_balance": "credit",
             "is_system": True,
+            "is_active": True,
+        }
+
+    @staticmethod
+    def _asset_cost_account() -> dict[str, Any]:
+        return {
+            "id": ASSET_COST_ACCOUNT,
+            "company_id": COMPANY_ID,
+            "code": "1600",
+            "name": "Motor vehicles",
+            "account_type": "asset",
+            "normal_balance": "debit",
+            "is_system": False,
+            "is_active": True,
+        }
+
+    @staticmethod
+    def _asset_accumulated_account() -> dict[str, Any]:
+        return {
+            "id": ASSET_ACCUMULATED_ACCOUNT,
+            "company_id": COMPANY_ID,
+            "code": "1690",
+            "name": "Accumulated depreciation - motor vehicles",
+            "account_type": "asset",
+            "normal_balance": "credit",
+            "is_system": False,
+            "is_active": True,
+        }
+
+    @staticmethod
+    def _asset_gain_loss_account() -> dict[str, Any]:
+        return {
+            "id": ASSET_GAIN_LOSS_ACCOUNT,
+            "company_id": COMPANY_ID,
+            "code": "4600",
+            "name": "Gain or loss on disposal",
+            "account_type": "revenue",
+            "normal_balance": "credit",
+            "is_system": False,
+            "is_active": True,
+        }
+
+    @staticmethod
+    def _cash_account() -> dict[str, Any]:
+        return {
+            "id": CASH_ACCOUNT,
+            "company_id": COMPANY_ID,
+            "code": "1000",
+            "name": "Cash at bank",
+            "account_type": "asset",
+            "normal_balance": "debit",
+            "is_system": False,
             "is_active": True,
         }
 
@@ -881,6 +993,180 @@ class FakeApi:
                 claim[field] = body[field]
         claim["version"] = 2 if update else 1
         return claim
+
+    @staticmethod
+    def _asset_category(is_active: bool = True) -> dict[str, Any]:
+        return {
+            "id": ASSET_CATEGORY_ID,
+            "organization_id": ORGANIZATION_ID,
+            "company_id": COMPANY_ID,
+            "code": "MOTOR",
+            "name": "Motor vehicles",
+            "description": "Vehicles used in operations.",
+            "cost_account_id": ASSET_COST_ACCOUNT,
+            "accumulated_depreciation_account_id": ASSET_ACCUMULATED_ACCOUNT,
+            "depreciation_expense_account_id": ACCOUNT_ONE,
+            "gain_loss_account_id": ASSET_GAIN_LOSS_ACCOUNT,
+            "is_active": is_active,
+            "created_at": "2026-01-02T08:00:00Z",
+            "version": 1,
+        }
+
+    def _asset_category_from_request(
+        self, request: httpx.Request, *, update: bool = False
+    ) -> dict[str, Any]:
+        body = cast(dict[str, Any], json.loads(request.content))
+        category = self._asset_category(bool(body.get("is_active", True)))
+        for field in (
+            "name",
+            "description",
+            "cost_account_id",
+            "accumulated_depreciation_account_id",
+            "depreciation_expense_account_id",
+            "gain_loss_account_id",
+            "is_active",
+        ):
+            if field in body:
+                category[field] = body[field]
+        if not update:
+            category["code"] = str(body["code"]).upper()
+        category["version"] = 2 if update else 1
+        return category
+
+    @staticmethod
+    def _fixed_asset(status: str = "active") -> dict[str, Any]:
+        depreciated = status in {"active", "disposal_pending", "disposed"}
+        return {
+            "id": FIXED_ASSET_ID,
+            "organization_id": ORGANIZATION_ID,
+            "company_id": COMPANY_ID,
+            "category_id": ASSET_CATEGORY_ID,
+            "category_code": "MOTOR",
+            "category_name": "Motor vehicles",
+            "asset_number": "FA-0001",
+            "name": "Toyota Hilux",
+            "description": "Double cab pickup",
+            "serial_reference": "KDJ-120-2026",
+            "acquisition_date": "2026-01-15",
+            "in_service_date": "2026-02-01",
+            "cost": "120000.00",
+            "residual_value": "12000.00",
+            "useful_life_months": 12,
+            "currency": "KES",
+            "status": status,
+            "cost_account_id": ASSET_COST_ACCOUNT,
+            "accumulated_depreciation_account_id": ASSET_ACCUMULATED_ACCOUNT,
+            "depreciation_expense_account_id": ACCOUNT_ONE,
+            "gain_loss_account_id": ASSET_GAIN_LOSS_ACCOUNT,
+            "accumulated_depreciation": "9000.00" if depreciated else "0.00",
+            "net_book_value": "111000.00" if depreciated else "120000.00",
+            "requested_by": USER_ID,
+            "submitted_by": USER_ID if status != "draft" else None,
+            "submitted_at": "2026-01-20T09:00:00Z" if status != "draft" else None,
+            "decided_by": (USER_ID if status in {"active", "rejected", "disposed"} else None),
+            "decided_at": (
+                "2026-01-21T10:00:00Z" if status in {"active", "rejected", "disposed"} else None
+            ),
+            "decision_note": "Approved within policy." if status == "active" else None,
+            "cancelled_by": USER_ID if status == "cancelled" else None,
+            "cancelled_at": "2026-01-21T10:00:00Z" if status == "cancelled" else None,
+            "capitalization_journal_id": JOURNAL_ID if depreciated else None,
+            "disposal_journal_id": JOURNAL_ID if status == "disposed" else None,
+            "created_at": "2026-01-10T08:00:00Z",
+            "version": 3,
+        }
+
+    def _fixed_asset_from_request(
+        self, request: httpx.Request, *, update: bool = False
+    ) -> dict[str, Any]:
+        body = cast(dict[str, Any], json.loads(request.content))
+        asset = self._fixed_asset("draft")
+        for field in (
+            "name",
+            "description",
+            "serial_reference",
+            "acquisition_date",
+            "in_service_date",
+            "cost",
+            "residual_value",
+            "useful_life_months",
+        ):
+            if field in body:
+                asset[field] = body[field]
+        if not update:
+            asset["asset_number"] = body["asset_number"]
+            asset["category_id"] = body["category_id"]
+        asset["version"] = 2 if update else 1
+        return asset
+
+    def _asset_page(self) -> dict[str, Any]:
+        return {
+            "items": [self._fixed_asset()],
+            "total": 1,
+            "page": 1,
+            "page_size": 25,
+        }
+
+    @staticmethod
+    def _asset_depreciation() -> dict[str, Any]:
+        return {
+            "id": ASSET_DEPRECIATION_ID,
+            "organization_id": ORGANIZATION_ID,
+            "company_id": COMPANY_ID,
+            "asset_id": FIXED_ASSET_ID,
+            "period_start": "2026-02-01",
+            "period_end": "2026-02-28",
+            "amount": "9000.00",
+            "journal_id": JOURNAL_ID,
+            "reference": "DEP-2026-02",
+            "posted_by": USER_ID,
+            "posted_at": "2026-02-28T18:00:00Z",
+            "created_at": "2026-02-28T18:00:00Z",
+        }
+
+    def _asset_depreciation_from_request(self, request: httpx.Request) -> dict[str, Any]:
+        body = cast(dict[str, Any], json.loads(request.content))
+        depreciation = self._asset_depreciation()
+        depreciation["period_start"] = body["period_start"]
+        depreciation["period_end"] = body["period_end"]
+        depreciation["reference"] = body.get("reference")
+        return depreciation
+
+    @staticmethod
+    def _asset_disposal(status: str = "pending") -> dict[str, Any]:
+        decided = status in {"approved", "rejected"}
+        return {
+            "id": ASSET_DISPOSAL_ID,
+            "organization_id": ORGANIZATION_ID,
+            "company_id": COMPANY_ID,
+            "asset_id": FIXED_ASSET_ID,
+            "disposal_date": "2026-04-15",
+            "proceeds_amount": "90000.00",
+            "proceeds_account_id": CASH_ACCOUNT,
+            "reason": "Sold after operational replacement.",
+            "status": status,
+            "requested_by": USER_ID,
+            "decided_by": USER_ID if decided else None,
+            "decided_at": "2026-04-16T10:00:00Z" if decided else None,
+            "decision_note": "Disposal approved." if status == "approved" else None,
+            "journal_id": JOURNAL_ID if status == "approved" else None,
+            "created_at": "2026-04-10T08:00:00Z",
+            "version": 2,
+        }
+
+    def _asset_disposal_from_request(self, request: httpx.Request) -> dict[str, Any]:
+        body = cast(dict[str, Any], json.loads(request.content))
+        disposal = self._asset_disposal("pending")
+        for field in (
+            "disposal_date",
+            "proceeds_amount",
+            "proceeds_account_id",
+            "reason",
+        ):
+            if field in body:
+                disposal[field] = body[field]
+        disposal["version"] = 1
+        return disposal
 
     @staticmethod
     def _membership_page() -> dict[str, Any]:

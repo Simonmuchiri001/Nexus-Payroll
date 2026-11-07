@@ -518,6 +518,107 @@ class MembershipPage(BaseModel):
     page_size: int
 
 
+class AssetCategory(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    company_id: uuid.UUID
+    code: str
+    name: str
+    description: str | None
+    cost_account_id: uuid.UUID
+    accumulated_depreciation_account_id: uuid.UUID
+    depreciation_expense_account_id: uuid.UUID
+    gain_loss_account_id: uuid.UUID
+    is_active: bool
+    created_at: datetime
+    version: int
+
+
+class FixedAsset(BaseModel):
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    company_id: uuid.UUID
+    category_id: uuid.UUID
+    category_code: str
+    category_name: str
+    asset_number: str
+    name: str
+    description: str | None
+    serial_reference: str | None
+    acquisition_date: date
+    in_service_date: date
+    cost: Decimal
+    residual_value: Decimal
+    useful_life_months: int
+    currency: str
+    status: str
+    cost_account_id: uuid.UUID
+    accumulated_depreciation_account_id: uuid.UUID
+    depreciation_expense_account_id: uuid.UUID
+    gain_loss_account_id: uuid.UUID
+    accumulated_depreciation: Decimal
+    net_book_value: Decimal
+    requested_by: uuid.UUID
+    submitted_by: uuid.UUID | None
+    submitted_at: datetime | None
+    decided_by: uuid.UUID | None
+    decided_at: datetime | None
+    decision_note: str | None
+    cancelled_by: uuid.UUID | None
+    cancelled_at: datetime | None
+    capitalization_journal_id: uuid.UUID | None
+    disposal_journal_id: uuid.UUID | None
+    created_at: datetime
+    version: int
+
+
+class AssetPage(BaseModel):
+    items: list[FixedAsset]
+    total: int
+    page: int
+    page_size: int
+
+
+class AssetDepreciation(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    company_id: uuid.UUID
+    asset_id: uuid.UUID
+    period_start: date
+    period_end: date
+    amount: Decimal
+    journal_id: uuid.UUID
+    reference: str | None
+    posted_by: uuid.UUID
+    posted_at: datetime
+    created_at: datetime
+
+
+class AssetDisposal(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    company_id: uuid.UUID
+    asset_id: uuid.UUID
+    disposal_date: date
+    proceeds_amount: Decimal
+    proceeds_account_id: uuid.UUID
+    reason: str
+    status: str
+    requested_by: uuid.UUID
+    decided_by: uuid.UUID | None
+    decided_at: datetime | None
+    decision_note: str | None
+    journal_id: uuid.UUID | None
+    created_at: datetime
+    version: int
+
+
 class Role(BaseModel):
     id: uuid.UUID
     code: str

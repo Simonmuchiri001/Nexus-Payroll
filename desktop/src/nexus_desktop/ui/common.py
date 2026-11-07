@@ -27,6 +27,8 @@ TONES = {
     "submitted": "accent",
     "calculated": "accent",
     "approved": "warning",
+    "disposal_pending": "warning",
+    "disposed": "neutral",
     "disbursed": "accent",
     "archived": "neutral",
     "ended": "neutral",
