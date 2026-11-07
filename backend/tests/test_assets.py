@@ -170,7 +170,9 @@ async def _finance_approver(
     )
 
 
-async def _submit(client: httpx.AsyncClient, session: AuthenticatedSession, asset: dict[str, Any]) -> dict[str, Any]:
+async def _submit(
+    client: httpx.AsyncClient, session: AuthenticatedSession, asset: dict[str, Any]
+) -> dict[str, Any]:
     response = await client.post(
         f"{API}/assets/{asset['id']}/submit",
         headers=session.headers,
@@ -226,9 +228,7 @@ async def _capitalized_asset(
         in_service_date=in_service_date,
     )
     submitted = await _submit(client, admin, asset)
-    approved = await _approve(
-        client, approver, submitted, accounts["3000"]["id"]
-    )
+    approved = await _approve(client, approver, submitted, accounts["3000"]["id"])
     return approved, chart, accounts
 
 
@@ -324,13 +324,9 @@ async def test_asset_draft_validates_cost_residual_life_and_tenant_accounts(
 
     assert (await create({"cost": "0.00"})).status_code == 422
     assert (await create({"cost": "-10.00"})).status_code == 422
-    assert (
-        await create({"residual_value": "130000.00"})
-    ).status_code == 422
+    assert (await create({"residual_value": "130000.00"})).status_code == 422
     assert (await create({"useful_life_months": 0})).status_code == 422
-    assert (
-        await create({"in_service_date": "2026-01-01"})
-    ).status_code == 422
+    assert (await create({"in_service_date": "2026-01-01"})).status_code == 422
 
     other_company = await client.post(
         f"{API}/companies",
@@ -344,9 +340,7 @@ async def test_asset_draft_validates_cost_residual_life_and_tenant_accounts(
     )
     assert other_company.status_code == 201, other_company.text
     other_company_id = other_company.json()["id"]
-    other_chart = await _asset_chart(
-        client, admin_session, company_id=other_company_id
-    )
+    other_chart = await _asset_chart(client, admin_session, company_id=other_company_id)
     other_category = await _create_category(
         client,
         admin_session,
@@ -660,9 +654,7 @@ async def test_asset_disposal_posts_gain_and_loss_with_separation(
     assert by_account[chart["gain_loss"]] == ["12000.00", "0.00"]
     assert by_account[chart["cost"]] == ["0.00", "120000.00"]
 
-    disposed = await client.get(
-        f"{API}/assets/{loss_asset['id']}", headers=approver.headers
-    )
+    disposed = await client.get(f"{API}/assets/{loss_asset['id']}", headers=approver.headers)
     assert disposed.status_code == 200, disposed.text
     assert disposed.json()["status"] == "disposed"
     assert disposed.json()["disposal_journal_id"] == loss_journal_id

@@ -152,18 +152,14 @@ async def cancel_asset(
     return await service.cancel_asset(session, context, asset_id, payload)
 
 
-@router.get(
-    "/{asset_id}/depreciation", response_model=list[AssetDepreciationResponse]
-)
+@router.get("/{asset_id}/depreciation", response_model=list[AssetDepreciationResponse])
 async def depreciation(
     asset_id: uuid.UUID, session: SessionDep, context: AuthDep
 ) -> list[AssetDepreciationResponse]:
     return await service.list_depreciation(session, context, asset_id)
 
 
-@router.post(
-    "/{asset_id}/depreciate", response_model=AssetDepreciationResponse, status_code=201
-)
+@router.post("/{asset_id}/depreciate", response_model=AssetDepreciationResponse, status_code=201)
 async def depreciate(
     asset_id: uuid.UUID,
     payload: AssetDepreciationCreate,

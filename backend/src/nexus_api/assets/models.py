@@ -97,9 +97,7 @@ class FixedAsset(Base, UUIDPrimaryKeyMixin, TimestampMixin, OptimisticLockMixin)
             "residual_value >= 0 AND residual_value <= cost", name="residual_value_valid"
         ),
         CheckConstraint("useful_life_months > 0", name="useful_life_positive"),
-        CheckConstraint(
-            "in_service_date >= acquisition_date", name="service_after_acquisition"
-        ),
+        CheckConstraint("in_service_date >= acquisition_date", name="service_after_acquisition"),
         CheckConstraint(
             "decided_by IS NULL OR decided_by <> requested_by",
             name="decision_separation_of_duties",
@@ -217,9 +215,7 @@ class AssetDisposal(Base, UUIDPrimaryKeyMixin, TimestampMixin, OptimisticLockMix
             ondelete="RESTRICT",
             name="fk_asset_disposal_company_org",
         ),
-        CheckConstraint(
-            "status IN ('pending', 'approved', 'rejected')", name="status_valid"
-        ),
+        CheckConstraint("status IN ('pending', 'approved', 'rejected')", name="status_valid"),
         CheckConstraint("proceeds_amount >= 0", name="proceeds_non_negative"),
         CheckConstraint(
             "decided_by IS NULL OR decided_by <> requested_by",

@@ -77,9 +77,7 @@ class FixedAssetCreate(BaseModel):
     acquisition_date: date
     in_service_date: date
     cost: Decimal = Field(gt=0, max_digits=20, decimal_places=2)
-    residual_value: Decimal = Field(
-        default=Decimal("0.00"), ge=0, max_digits=20, decimal_places=2
-    )
+    residual_value: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=20, decimal_places=2)
     useful_life_months: int = Field(ge=1, le=1200)
 
     @model_validator(mode="after")
@@ -99,9 +97,7 @@ class FixedAssetUpdate(BaseModel):
     acquisition_date: date | None = None
     in_service_date: date | None = None
     cost: Decimal | None = Field(default=None, gt=0, max_digits=20, decimal_places=2)
-    residual_value: Decimal | None = Field(
-        default=None, ge=0, max_digits=20, decimal_places=2
-    )
+    residual_value: Decimal | None = Field(default=None, ge=0, max_digits=20, decimal_places=2)
     useful_life_months: int | None = Field(default=None, ge=1, le=1200)
 
     @model_validator(mode="after")

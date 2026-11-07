@@ -1085,10 +1085,7 @@ async def post_asset_depreciation(
             session, asset.company_id, depreciation.period_end
         ),
         journal_date=depreciation.period_end,
-        description=(
-            f"Depreciation of {asset.asset_number} for "
-            f"{depreciation.period_start:%Y-%m}"
-        ),
+        description=(f"Depreciation of {asset.asset_number} for {depreciation.period_start:%Y-%m}"),
         reference=depreciation.reference,
         status="posted",
         currency=asset.currency,

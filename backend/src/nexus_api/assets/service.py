@@ -100,9 +100,7 @@ async def _validate_category_accounts(
         gain_loss_account_id,
     }
     if len(account_ids) != 4:
-        raise ValidationFailureError(
-            "Each category mapping must use a different ledger account."
-        )
+        raise ValidationFailureError("Each category mapping must use a different ledger account.")
     await _account(
         session,
         company_id,
@@ -148,9 +146,7 @@ async def list_categories(
     if not include_inactive:
         filters.append(AssetCategory.is_active.is_(True))
     categories = (
-        await session.scalars(
-            select(AssetCategory).where(*filters).order_by(AssetCategory.code)
-        )
+        await session.scalars(select(AssetCategory).where(*filters).order_by(AssetCategory.code))
     ).all()
     return [AssetCategoryResponse.model_validate(category) for category in categories]
 
@@ -257,8 +253,7 @@ async def update_category(
                 or category.accumulated_depreciation_account_id
             ),
             "depreciation_expense_account_id": (
-                payload.depreciation_expense_account_id
-                or category.depreciation_expense_account_id
+                payload.depreciation_expense_account_id or category.depreciation_expense_account_id
             ),
             "gain_loss_account_id": payload.gain_loss_account_id or category.gain_loss_account_id,
         }
@@ -409,11 +404,7 @@ async def list_assets(
         category = categories.get(asset.category_id)
         if category is None:
             raise NotFoundError("A category linked to a listed asset is missing.")
-        items.append(
-            _asset_response(
-                asset, category, accumulated.get(asset.id, Decimal("0.00"))
-            )
-        )
+        items.append(_asset_response(asset, category, accumulated.get(asset.id, Decimal("0.00"))))
     return AssetPage(
         items=items,
         total=total or 0,
