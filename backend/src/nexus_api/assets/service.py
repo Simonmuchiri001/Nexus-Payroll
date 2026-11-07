@@ -913,8 +913,8 @@ async def approve_disposal(
     payload: AssetDisposalDecision,
 ) -> AssetDisposalResponse:
     asset = await _locked_asset(session, context, asset_id, PermissionCode.ASSET_DISPOSE)
+    _check_version(asset, payload.version)
     disposal = await _disposal_for_asset(session, asset.id, for_update=True)
-    _check_version(disposal, payload.version)
     if asset.status == "disposed" and disposal.status == "approved":
         return AssetDisposalResponse.model_validate(disposal)
     if asset.status != "disposal_pending" or disposal.status != "pending":
@@ -958,8 +958,8 @@ async def reject_disposal(
     payload: AssetDisposalDecision,
 ) -> AssetDisposalResponse:
     asset = await _locked_asset(session, context, asset_id, PermissionCode.ASSET_DISPOSE)
+    _check_version(asset, payload.version)
     disposal = await _disposal_for_asset(session, asset.id, for_update=True)
-    _check_version(disposal, payload.version)
     if asset.status != "disposal_pending" or disposal.status != "pending":
         raise ConflictError("No pending disposal request exists for this asset.")
     if disposal.requested_by == context.user.id:

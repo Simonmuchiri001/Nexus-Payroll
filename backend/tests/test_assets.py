@@ -619,10 +619,16 @@ async def test_asset_disposal_posts_gain_and_loss_with_separation(
     assert disposal.status_code == 201, disposal.text
     assert disposal.json()["status"] == "pending"
 
+    pending_asset = await client.get(
+        f"{API}/assets/{loss_asset['id']}", headers=admin_session.headers
+    )
+    assert pending_asset.status_code == 200, pending_asset.text
+    assert pending_asset.json()["status"] == "disposal_pending"
+
     self_approval = await client.post(
         f"{API}/assets/{loss_asset['id']}/dispose/approve",
         headers=admin_session.headers,
-        json={"version": disposal.json()["version"]},
+        json={"version": pending_asset.json()["version"]},
     )
     assert self_approval.status_code == 409, self_approval.text
     assert "separation of duties" in self_approval.json()["error"]["message"].lower()
@@ -630,7 +636,7 @@ async def test_asset_disposal_posts_gain_and_loss_with_separation(
     approved = await client.post(
         f"{API}/assets/{loss_asset['id']}/dispose/approve",
         headers=approver.headers,
-        json={"version": disposal.json()["version"], "note": "Approved loss disposal"},
+        json={"version": pending_asset.json()["version"], "note": "Approved loss disposal"},
     )
     assert approved.status_code == 200, approved.text
     assert approved.json()["status"] == "approved"
@@ -662,7 +668,7 @@ async def test_asset_disposal_posts_gain_and_loss_with_separation(
     retry = await client.post(
         f"{API}/assets/{loss_asset['id']}/dispose/approve",
         headers=approver.headers,
-        json={"version": approved.json()["version"]},
+        json={"version": disposed.json()["version"]},
     )
     assert retry.status_code == 200, retry.text
     assert retry.json()["journal_id"] == loss_journal_id
@@ -707,10 +713,14 @@ async def test_asset_disposal_posts_gain_and_loss_with_separation(
         },
     )
     assert gain_disposal.status_code == 201, gain_disposal.text
+    gain_pending = await client.get(
+        f"{API}/assets/{gain_asset['id']}", headers=admin_session.headers
+    )
+    assert gain_pending.status_code == 200, gain_pending.text
     gain_approved = await client.post(
         f"{API}/assets/{gain_asset['id']}/dispose/approve",
         headers=approver.headers,
-        json={"version": gain_disposal.json()["version"]},
+        json={"version": gain_pending.json()["version"]},
     )
     assert gain_approved.status_code == 200, gain_approved.text
     gain_journal = await client.get(
@@ -795,10 +805,14 @@ async def test_asset_permissions_and_disposal_rejection(
         },
     )
     assert disposal.status_code == 201, disposal.text
+    pending_asset = await client.get(
+        f"{API}/assets/{asset['id']}", headers=admin_session.headers
+    )
+    assert pending_asset.status_code == 200, pending_asset.text
     rejected = await client.post(
         f"{API}/assets/{asset['id']}/dispose/reject",
         headers=approver.headers,
-        json={"version": disposal.json()["version"], "note": "Proceeds too low"},
+        json={"version": pending_asset.json()["version"], "note": "Proceeds too low"},
     )
     assert rejected.status_code == 200, rejected.text
     assert rejected.json()["status"] == "rejected"
