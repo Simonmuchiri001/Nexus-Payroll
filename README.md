@@ -36,6 +36,11 @@ jurisdiction.
 - **Expenses.** Configurable expense categories mapped to ledger accounts,
   receipt-backed employee claims, approval and payer separation, and
   idempotent balanced cash reimbursement journals.
+- **Fixed assets.** Company asset categories mapped to cost, accumulated
+  depreciation, depreciation expense and gain/loss accounts; a draft-to-active
+  register with separation of duties; source-keyed capitalization,
+  straight-line monthly depreciation and disposal journals; and approval-gated
+  disposal requests.
 - **Payroll.** Pay groups and periods, deterministic Kenya statutory
   calculation, preparer/approver separation of duties, immutable approved runs,
   finalisation, idempotent ledger posting and per-run statutory rule snapshots.
@@ -43,8 +48,9 @@ jurisdiction.
   source-linked posting and trial balance.
 - **Desktop.** Secure keychain session restoration, company switching,
   overview, people directory and onboarding, leave and attendance, loans,
-  benefit plans and enrolments, expense claims and categories, payroll setup and
-  lifecycle, accounting views, access administration, plus light and dark themes.
+  benefit plans and enrolments, expense claims and categories, fixed asset
+  categories and register, payroll setup and lifecycle, accounting views,
+  access administration, plus light and dark themes.
 - **Quality gates.** Ruff, Pyright strict, PostgreSQL integration tests,
   migration round-trip tests, offscreen pytest-qt UI tests and a GitHub Actions
   workflow.
@@ -57,7 +63,9 @@ These are real gaps, not hidden placeholders:
 - Benefit provider billing, eligibility feeds and insurer reconciliations
 - Payroll deductions driven by unpaid leave, absence or attendance
 - Automatic national public-holiday calendars
-- Assets, depreciation, procurement and inventory
+- Procurement and inventory
+- Asset tax depreciation, impairment, revaluation, component accounting and
+  asset procurement; only book depreciation and disposal are implemented
 - Sales, invoicing, receivables, CRM and projects
 - Bank accounts, reconciliations, payment disbursement and payment files
 - KRA/eCitizen filing, M-Pesa, bank and accounting-provider integrations
@@ -76,6 +84,7 @@ backend/
   alembic/                 database migrations
   src/nexus_api/           authoritative FastAPI service
     accounting/            journals, chart of accounts, trial balance
+    assets/                categories, register, depreciation and disposal
     employees/             people and compensation
     expenses/              categories, claims and reimbursement posting
     identity/              authentication, RBAC, memberships, roles

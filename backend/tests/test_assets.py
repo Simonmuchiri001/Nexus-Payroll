@@ -805,9 +805,7 @@ async def test_asset_permissions_and_disposal_rejection(
         },
     )
     assert disposal.status_code == 201, disposal.text
-    pending_asset = await client.get(
-        f"{API}/assets/{asset['id']}", headers=admin_session.headers
-    )
+    pending_asset = await client.get(f"{API}/assets/{asset['id']}", headers=admin_session.headers)
     assert pending_asset.status_code == 200, pending_asset.text
     rejected = await client.post(
         f"{API}/assets/{asset['id']}/dispose/reject",

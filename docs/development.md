@@ -76,6 +76,16 @@ already been deployed; add a new one.
 
 The application never downloads statutory rules at runtime.
 
+## Fixed assets operations
+
+Fixed assets need no special command-line operation. Use the desktop Assets
+workspace or the `/api/v1/assets` API. Before capitalization, depreciation or
+disposal approval, confirm the fiscal calendar contains an open fiscal period
+covering the acquisition, depreciation or disposal date; the API rejects
+postings outside an open period. Accumulated depreciation and net book value
+are returned by the API from posted depreciation rows and are not entered
+manually. Tax depreciation and procurement are not implemented.
+
 ## Desktop packaging
 
 The desktop executable entry point is:

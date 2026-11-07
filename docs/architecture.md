@@ -36,6 +36,8 @@ The backend is a modular monolith. Packages are split by business capability:
   snapshots and payroll benefit charges.
 - `expenses`: expense categories, receipt metadata, employee claims, approval
   separation and cash reimbursement posting.
+- `assets`: asset categories, fixed-asset register, capitalization,
+  straight-line depreciation and disposal accounting.
 - `payroll`: pay groups, periods, runs, calculations, lifecycle transitions,
   statutory rule sets and per-run snapshots.
 - `accounting`: company chart of accounts, fiscal periods, journals, posting and
@@ -148,6 +150,54 @@ draft -> calculated -> approved -> finalized -> posted
 - A category's account mapping cannot change after claims have been recorded,
   preserving the accounting meaning of historical claims and journals.
 
+## Fixed assets
+
+- Asset categories are company-scoped and map to four ledger accounts: asset
+  cost, accumulated depreciation, depreciation expense and disposal gain/loss.
+  A category mapping cannot change after assets have been recorded against it,
+  and a category with submitted, active or disposal-pending assets cannot be
+  archived. Asset creation snapshots the category account IDs so later
+  category administration cannot rewrite historical meaning.
+- Assets move through
+  `draft -> submitted -> active -> disposal_pending -> disposed`, with
+  `rejected` and `cancelled` branches. Draft fields may be edited; submission
+  freezes the financial fields, and active asset financial fields are
+  immutable. Rejected drafts may be edited and resubmitted; cancelled records
+  are terminal. Rejection of a disposal returns the asset to active.
+- The requester cannot approve or reject their own capitalization submission
+  or disposal request. Optimistic versions protect concurrent edits, and every
+  command validates company access through `AuthContext`.
+- Capitalization posts one balanced journal keyed by
+  `(company_id, 'asset_capitalization', asset_id)` on approval: debit the
+  snapshotted asset cost account and credit the selected funding account
+  (active asset, liability or equity) for asset cost. The journal date is the
+  acquisition date and must fall in an open fiscal period. Retried approval
+  returns the existing journal.
+- Depreciation is book straight-line only: monthly amount is
+  `(cost - residual value) / useful life months`, with the final period
+  receiving the rounded remaining depreciable amount so total depreciation
+  never exceeds `cost - residual value`. Each depreciation posts one journal
+  keyed by `(company_id, 'asset_depreciation', depreciation_id)`: debit
+  depreciation expense and credit accumulated depreciation. Periods must be
+  calendar-month boundaries in open fiscal periods, on or after the in-service
+  month, and each asset/period is unique for idempotent retries. Fully
+  depreciated assets remain active until disposed.
+- Disposal requests require an active asset, a disposal date on or after the
+  acquisition and in-service dates in an open fiscal period, proceeds to an
+  active asset or revenue account, and a reason. Approval posts one balanced
+  journal keyed by `(company_id, 'asset_disposal', asset_id)`: debit
+  proceeds, debit accumulated depreciation to clear it, debit the gain/loss
+  account for a loss or credit it for a gain, and credit asset cost. The
+  asset becomes disposed only after that journal flush succeeds; retried
+  approval returns the existing journal.
+- Accumulated depreciation and net book value returned by the API are derived
+  from posted depreciation rows. Monetary values use `NUMERIC(20,2)` /
+  `Decimal` and decimal strings over the API.
+- Explicit exclusions: tax depreciation, impairment, revaluation, component
+  accounting, vendor procurement, inventory receipt, external payment
+  execution and bank integration are out of scope and are not inferred or
+  automated.
+
 ## Statutory calculation
 
 `backend/src/nexus_api/payroll/rules/kenya_2026.json` is parsed and validated
@@ -201,6 +251,11 @@ backend errors are logged and returned without internal details.
 - Expense tests cover receipt and employment-date validation, draft editing,
   approval and payer separation, category archive protection, balanced cash
   reimbursement and idempotent retry behaviour.
+- Asset tests cover category account-type validation, duplicate codes, archive
+  protection, tenant isolation, draft validation, requester/approver
+  separation, immutable active fields, balanced source-keyed capitalization,
+  straight-line depreciation with final-period rounding and period
+  boundaries, and disposal gain/loss clearing with idempotent retries.
 - Migration tests run upgrade, downgrade to base and re-upgrade in an isolated
   schema.
 - Trigger tests prove audit rows cannot be updated or deleted.
