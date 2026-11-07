@@ -76,6 +76,26 @@ already been deployed; add a new one.
 
 The application never downloads statutory rules at runtime.
 
+## Holiday calendar changes
+
+The Kenya national calendar
+(`backend/src/nexus_api/leave/kenya_public_holidays.json`) follows the same
+discipline as statutory rules:
+
+1. Confirm dates from an authoritative source (Public Holidays Act Cap 110,
+   gazette notice, or the responsible ministry).
+2. Edit the JSON, bump `version`, update `verified_on` and `source_url`.
+3. Update checksum-dependent tests and re-run the holiday tests.
+4. Run the full payroll lifecycle test — calendar dates feed
+   working-day counts and therefore deductions.
+5. Obtain legal review before production use. Movable dates (Easter, Eid)
+   must be confirmed for the target year; subject-to-moon holidays are
+   gazetted per year.
+
+After import, each company sees the new calendar version. Import is
+idempotent and never overwrites a company-custom holiday, so verified
+updates are safe to import again.
+
 ## Fixed assets operations
 
 Fixed assets need no special command-line operation. Use the desktop Assets

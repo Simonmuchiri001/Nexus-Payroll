@@ -88,6 +88,14 @@ draft -> calculated -> approved -> finalized -> posted
   the same journal instead of creating a second one.
 - Payroll periods remain open at this stage of the product; period closure and
   reversals are future work.
+- Each result also snapshots the attendance summary (`working_days`,
+  `paid_days`, `unpaid_days` and per-status counts) and the working-day
+  calendar (dates + national calendar version). Unpaid deduction is
+  `prorated_gross / payable_days * unpaid_working_days` (Decimal, capped at
+  prorated gross); statutory is calculated on `gross_payable =
+  prorated_gross - unpaid_deduction`, and the payslip `UNPAID` line is
+  informational — the journal posts expense at `gross_payable` with no
+  payable for unpaid time.
 
 ## Leave and attendance
 
@@ -104,10 +112,17 @@ draft -> calculated -> approved -> finalized -> posted
 - Attendance is weekday-only, cannot be recorded in the future, and cannot
   collide with approved leave. Leave attendance is owned by the leave request
   and is not editable through the attendance register.
-- Company holidays are configured per company. National public holidays are not
-  imported automatically yet, so they must be recorded explicitly.
-- Leave and attendance are not yet consumed by payroll calculation. Unpaid
-  leave, absence and attendance-driven deductions remain future work.
+- Company holidays are configured per company. Kenya national public holidays
+  are curated in a versioned JSON dataset
+  (`backend/src/nexus_api/leave/kenya_public_holidays.json`) and imported
+  idempotently; company-custom rows are never overwritten, and every row
+  records whether it is `company` or `national` origin plus the calendar
+  version.
+- Payroll consumes the attendance register. Unpaid leave (leave types with
+  `is_paid = false`) and manual absences reduce pay; paid leave, present,
+  remote and holiday rows do not. Missing attendance is treated as paid so
+  employees without a register are unaffected. Deductions, working-day
+  counts and snapshots are described under Payroll below.
 
 ## Loans and benefits
 
@@ -243,6 +258,12 @@ backend errors are logged and returned without internal details.
 - Leave tests cover working-day calculation, holiday exclusion, balance
   movements, separation of duties, overlap and entitlement boundaries,
   carryover caps and attendance collisions.
+- Holiday tests cover dataset well-formedness, checksum, working-day edge
+  cases, idempotent national import with custom-row preservation and tenant
+  isolation.
+- Payroll attendance tests cover unpaid-leave reduction with statutory on
+  payable gross, cap behaviour, paid/missing no-deduction, snapshot
+  immutability and zero-deduction regression.
 - Loan tests cover approval and disbursement journals, payroll deduction,
   affordability rejection and automatic closure.
 - Benefit tests cover plan and enrolment boundaries, duplicate active

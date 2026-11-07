@@ -24,9 +24,10 @@ jurisdiction.
 - **People.** Employee records with effective-dated compensation and
   termination workflows.
 - **Leave and attendance.** Configurable leave types and entitlements, capped
-  carryover, company holidays, working-day leave requests, separate approver
-  checks, balance movements and an attendance register created from approved
-  leave.
+  carryover, company + imported Kenya national holidays, working-day leave
+  requests, separate approver checks, balance movements and an attendance
+  register created from approved leave, plus idempotent national-holiday
+  import.
 - **Loans and advances.** Employee applications, separation of duties,
   disbursement journals, reducing-balance schedules and payroll deduction
   reservations that settle on finalisation.
@@ -43,7 +44,9 @@ jurisdiction.
   disposal requests.
 - **Payroll.** Pay groups and periods, deterministic Kenya statutory
   calculation, preparer/approver separation of duties, immutable approved runs,
-  finalisation, idempotent ledger posting and per-run statutory rule snapshots.
+  finalisation, idempotent ledger posting, per-run statutory rule snapshots,
+  and attendance-driven unpaid leave/absence deductions with snapshotted
+  attendance and calendar blocks.
 - **Accounting.** Company chart of accounts, fiscal periods, balanced journals,
   source-linked posting and trial balance.
 - **Desktop.** Secure keychain session restoration, company switching,
@@ -61,8 +64,6 @@ These are real gaps, not hidden placeholders:
 
 - Recruitment
 - Benefit provider billing, eligibility feeds and insurer reconciliations
-- Payroll deductions driven by unpaid leave, absence or attendance
-- Automatic national public-holiday calendars
 - Procurement and inventory
 - Asset tax depreciation, impairment, revaluation, component accounting and
   asset procurement; only book depreciation and disposal are implemented
