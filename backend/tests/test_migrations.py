@@ -84,7 +84,7 @@ def test_migration_applies_cleanly_downgrades_and_reapplies(
                     f'SELECT version_num FROM "{SCHEMA_NAME}".alembic_version'  # noqa: S608
                 )
             )
-            assert revision == "516c413f752e"
+            assert revision == "e9023fa67460"
 
             trigger_exists = connection.scalar(
                 text(
@@ -123,7 +123,7 @@ def test_migration_applies_cleanly_downgrades_and_reapplies(
                     f'SELECT version_num FROM "{SCHEMA_NAME}".alembic_version'  # noqa: S608
                 )
             )
-            assert revision == "516c413f752e"
+            assert revision == "e9023fa67460"
             assert "organizations" in tables
             assert "journal_lines" in tables
             assert "employee_loans" in tables

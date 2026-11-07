@@ -25,6 +25,8 @@ from nexus_api.core.errors import (
 from nexus_api.employees.models import Employee, EmployeeCompensation
 from nexus_api.identity.permissions import PermissionCode
 from nexus_api.identity.service import AuthContext, validate_company_access
+from nexus_api.leave.holidays import load_national_calendar, working_dates
+from nexus_api.leave.models import AttendanceRecord, CompanyHoliday, LeaveRequest, LeaveType
 from nexus_api.loans.models import EmployeeLoan, LoanInstallment
 from nexus_api.organizations.models import Company
 from nexus_api.payroll.models import (
@@ -69,10 +71,28 @@ class BenefitCharge:
 
 
 @dataclass(frozen=True, slots=True)
+class AttendanceSummary:
+    working_days: int
+    paid_days: int
+    unpaid_days: int
+    present: int
+    remote: int
+    paid_leave: int
+    unpaid_leave: int
+    absent: int
+    holiday: int
+    missing: int
+
+
+@dataclass(frozen=True, slots=True)
 class EmployeeCalculation:
     employee: Employee
     days_in_period: int
     payable_days: int
+    working_days: int
+    paid_days: int
+    unpaid_days: int
+    unpaid_deduction: Decimal
     base_salary: Decimal
     housing_allowance: Decimal
     transport_allowance: Decimal
@@ -400,6 +420,102 @@ async def list_results(
     )
 
 
+async def summarize_attendance(
+    session: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    employee: Employee,
+    period_start: date,
+    period_end: date,
+    holidays: set[date],
+) -> AttendanceSummary:
+    window_start = max(period_start, employee.hire_date)
+    window_end = min(period_end, employee.termination_date or period_end)
+    if window_end < window_start:
+        return AttendanceSummary(
+            working_days=0,
+            paid_days=0,
+            unpaid_days=0,
+            present=0,
+            remote=0,
+            paid_leave=0,
+            unpaid_leave=0,
+            absent=0,
+            holiday=0,
+            missing=0,
+        )
+    working = working_dates(window_start, window_end, holidays)
+    working_set = set(working)
+    records = (
+        await session.scalars(
+            select(AttendanceRecord).where(
+                AttendanceRecord.company_id == company_id,
+                AttendanceRecord.employee_id == employee.id,
+                AttendanceRecord.work_date >= window_start,
+                AttendanceRecord.work_date <= window_end,
+            )
+        )
+    ).all()
+    request_ids = {
+        record.leave_request_id for record in records if record.leave_request_id is not None
+    }
+    leave_types: dict[uuid.UUID, LeaveType] = {}
+    if request_ids:
+        requests = (
+            await session.scalars(select(LeaveRequest).where(LeaveRequest.id.in_(request_ids)))
+        ).all()
+        type_ids = {request.leave_type_id for request in requests}
+        if type_ids:
+            fetched_types = (
+                await session.scalars(select(LeaveType).where(LeaveType.id.in_(type_ids)))
+            ).all()
+            leave_types = {leave_type.id: leave_type for leave_type in fetched_types}
+        request_to_type = {
+            request.id: leave_types.get(request.leave_type_id) for request in requests
+        }
+    else:
+        request_to_type = {}
+    present = remote = paid_leave = unpaid_leave = absent = holiday = 0
+    for record in records:
+        if record.work_date not in working_set:
+            continue
+        if record.status == "absent":
+            absent += 1
+        elif record.status == "leave":
+            leave_type = (
+                request_to_type.get(record.leave_request_id)
+                if record.leave_request_id is not None
+                else None
+            )
+            if leave_type is not None and not leave_type.is_paid:
+                unpaid_leave += 1
+            else:
+                paid_leave += 1
+        elif record.status == "present":
+            present += 1
+        elif record.status == "remote":
+            remote += 1
+        elif record.status == "holiday":
+            holiday += 1
+    unpaid_days = absent + unpaid_leave
+    working_days = len(working)
+    recorded = present + remote + paid_leave + unpaid_leave + absent + holiday
+    missing = max(working_days - recorded, 0)
+    paid_days = max(working_days - unpaid_days, 0)
+    return AttendanceSummary(
+        working_days=working_days,
+        paid_days=paid_days,
+        unpaid_days=unpaid_days,
+        present=present,
+        remote=remote,
+        paid_leave=paid_leave,
+        unpaid_leave=unpaid_leave,
+        absent=absent,
+        holiday=holiday,
+        missing=missing,
+    )
+
+
 async def calculate_run(
     session: AsyncSession, context: AuthContext, run_id: uuid.UUID
 ) -> PayrollRun:
@@ -530,6 +646,33 @@ async def calculate_run(
             },
         )
 
+    holiday_rows = (
+        await session.scalars(
+            select(CompanyHoliday).where(
+                CompanyHoliday.company_id == run.company_id,
+                CompanyHoliday.holiday_date >= run.period_start,
+                CompanyHoliday.holiday_date <= run.period_end,
+            )
+        )
+    ).all()
+    holiday_set = {holiday.holiday_date for holiday in holiday_rows}
+    national_rows = [row for row in holiday_rows if row.origin == "national"]
+    calendar_version = (
+        national_rows[0].calendar_version if national_rows else load_national_calendar().version
+    )
+    holiday_tuple = tuple(sorted(holiday_set))
+
+    summaries: dict[uuid.UUID, AttendanceSummary] = {}
+    for employee in employees:
+        summaries[employee.id] = await summarize_attendance(
+            session,
+            company_id=run.company_id,
+            employee=employee,
+            period_start=run.period_start,
+            period_end=run.period_end,
+            holidays=holiday_set,
+        )
+
     calculations: list[EmployeeCalculation] = []
     for employee in employees:
         calculations.append(
@@ -542,6 +685,9 @@ async def calculate_run(
                 run.currency,
                 loans_by_employee.get(employee.id, []),
                 benefits_by_employee.get(employee.id, []),
+                attendance=summaries[employee.id],
+                holidays=holiday_tuple,
+                calendar_version=calendar_version,
             )
         )
 
@@ -558,6 +704,7 @@ async def calculate_run(
     loan_deduction_total = Decimal("0.00")
     benefit_employee_total = Decimal("0.00")
     benefit_employer_total = Decimal("0.00")
+    unpaid_deduction_total = Decimal("0.00")
     net_total = Decimal("0.00")
     employer_cost_total = Decimal("0.00")
 
@@ -570,6 +717,10 @@ async def calculate_run(
             currency=run.currency,
             days_in_period=calculation.days_in_period,
             payable_days=calculation.payable_days,
+            working_days=calculation.working_days,
+            paid_days=calculation.paid_days,
+            unpaid_days=calculation.unpaid_days,
+            unpaid_deduction=calculation.unpaid_deduction,
             base_salary=calculation.base_salary,
             housing_allowance=calculation.housing_allowance,
             transport_allowance=calculation.transport_allowance,
@@ -627,6 +778,7 @@ async def calculate_run(
         loan_deduction_total += calculation.loan_deduction
         benefit_employee_total += calculation.benefit_employee_deduction
         benefit_employer_total += calculation.benefit_employer_contribution
+        unpaid_deduction_total += calculation.unpaid_deduction
         net_total += calculation.net_pay
         employer_cost_total += calculation.employer_cost
 
@@ -640,6 +792,7 @@ async def calculate_run(
     run.loan_deduction_total = money(loan_deduction_total)
     run.benefit_employee_total = money(benefit_employee_total)
     run.benefit_employer_total = money(benefit_employer_total)
+    run.unpaid_deduction_total = money(unpaid_deduction_total)
     run.net_total = money(net_total)
     run.employer_cost_total = money(employer_cost_total)
     run.status = "calculated"
@@ -721,6 +874,10 @@ def _calculate_employee(
     currency: str,
     loan_due: list[tuple[LoanInstallment, EmployeeLoan]],
     benefit_due: list[tuple[BenefitEnrollment, BenefitPlan]],
+    *,
+    attendance: AttendanceSummary | None = None,
+    holidays: tuple[date, ...] = (),
+    calendar_version: str | None = None,
 ) -> EmployeeCalculation:
     total_days = (period_end - period_start).days + 1
     base = Decimal("0.00")
@@ -777,7 +934,26 @@ def _calculate_employee(
     housing = money(housing)
     transport = money(transport)
     other = money(other)
-    gross = money(base + housing + transport + other)
+    prorated_gross = money(base + housing + transport + other)
+
+    working_days = attendance.working_days if attendance else 0
+    unpaid_days = attendance.unpaid_days if attendance else 0
+    paid_days = attendance.paid_days if attendance else 0
+    if working_days == 0:
+        # No working-day window (e.g. fully outside employment): no deduction.
+        working_days = 0
+        paid_days = 0
+        unpaid_days = 0
+    if unpaid_days and payable_days:
+        average_daily = prorated_gross / Decimal(payable_days)
+        unpaid_deduction = money(average_daily * Decimal(unpaid_days))
+        if unpaid_deduction > prorated_gross:
+            unpaid_deduction = prorated_gross
+    else:
+        unpaid_deduction = Decimal("0.00")
+    daily_rate = money(prorated_gross / Decimal(payable_days)) if payable_days else Decimal("0.00")
+
+    gross = money(prorated_gross - unpaid_deduction)
     statutory = calculate_kenya(rules, StatutoryInput(gross=gross))
     loan_principal = money(
         sum((installment.principal_due for installment, _loan in loan_due), Decimal("0.00"))
@@ -854,7 +1030,32 @@ def _calculate_employee(
         statutory.nita,
         loan_due,
         benefit_charges,
+        unpaid_deduction=unpaid_deduction,
     )
+    if attendance is not None:
+        attendance_block: dict[str, Any] = {
+            "working_days": attendance.working_days,
+            "paid_days": attendance.paid_days,
+            "unpaid_days": attendance.unpaid_days,
+            "present": attendance.present,
+            "remote": attendance.remote,
+            "paid_leave": attendance.paid_leave,
+            "unpaid_leave": attendance.unpaid_leave,
+            "absent": attendance.absent,
+            "holiday": attendance.holiday,
+            "missing": attendance.missing,
+        }
+    else:
+        attendance_block = {
+            "working_days": working_days,
+            "paid_days": paid_days,
+            "unpaid_days": unpaid_days,
+        }
+    calendar_block: dict[str, Any] = {
+        "working_days": working_days,
+        "holidays": [holiday.isoformat() for holiday in holidays],
+        "calendar_version": calendar_version,
+    }
     snapshot: dict[str, Any] = {
         "engine_version": ENGINE_VERSION,
         "employee_number": employee.employee_number,
@@ -862,6 +1063,14 @@ def _calculate_employee(
         "payable_days": payable_days,
         "segments": segments,
         "gross": str(gross),
+        "prorated_gross": str(prorated_gross),
+        "attendance": attendance_block,
+        "calendar": calendar_block,
+        "unpaid": {
+            "unpaid_days": unpaid_days,
+            "unpaid_deduction": str(unpaid_deduction),
+            "daily_rate": str(daily_rate),
+        },
         "loans": [
             {
                 "loan_id": str(loan.id),
@@ -907,6 +1116,10 @@ def _calculate_employee(
         employee=employee,
         days_in_period=total_days,
         payable_days=payable_days,
+        working_days=working_days,
+        paid_days=paid_days,
+        unpaid_days=unpaid_days,
+        unpaid_deduction=unpaid_deduction,
         base_salary=base,
         housing_allowance=housing,
         transport_allowance=transport,
@@ -948,12 +1161,21 @@ def _lines_for(
     nita: Decimal,
     loan_due: list[tuple[LoanInstallment, EmployeeLoan]],
     benefit_charges: tuple[BenefitCharge, ...],
+    *,
+    unpaid_deduction: Decimal = Decimal("0.00"),
 ) -> tuple[CalculationLine, ...]:
     candidates = (
         CalculationLine("earning", "BASE", "Basic salary", base, True),
         CalculationLine("earning", "HOUSING", "Housing allowance", housing, True),
         CalculationLine("earning", "TRANSPORT", "Transport allowance", transport, True),
         CalculationLine("earning", "OTHER", "Other allowance", other, True),
+        CalculationLine(
+            "deduction",
+            "UNPAID",
+            "Unpaid leave / absence deduction",
+            unpaid_deduction,
+            False,
+        ),
         CalculationLine("statutory", "PAYE", "PAYE", paye, False),
         CalculationLine("statutory", "NSSF_EE", "NSSF employee contribution", nssf_employee, False),
         CalculationLine("statutory", "SHIF", "SHIF contribution", shif, False),

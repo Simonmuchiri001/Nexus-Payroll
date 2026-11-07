@@ -101,6 +101,7 @@ class PayrollRunResponse(BaseModel):
     loan_deduction_total: Decimal
     benefit_employee_total: Decimal
     benefit_employer_total: Decimal
+    unpaid_deduction_total: Decimal
     net_total: Decimal
     employer_cost_total: Decimal
     prepared_by: uuid.UUID
@@ -124,6 +125,10 @@ class PayrollResultResponse(BaseModel):
     currency: str
     days_in_period: int
     payable_days: int
+    working_days: int = 0
+    paid_days: int = 0
+    unpaid_days: int = 0
+    unpaid_deduction: Decimal = Decimal("0.00")
     base_salary: Decimal
     housing_allowance: Decimal
     transport_allowance: Decimal

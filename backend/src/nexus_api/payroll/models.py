@@ -194,6 +194,9 @@ class PayrollRun(Base, UUIDPrimaryKeyMixin, TimestampMixin, OptimisticLockMixin)
     benefit_employer_total: Mapped[Decimal] = mapped_column(
         Numeric(20, 2), nullable=False, default=Decimal("0.00"), server_default="0"
     )
+    unpaid_deduction_total: Mapped[Decimal] = mapped_column(
+        Numeric(20, 2), nullable=False, default=Decimal("0.00"), server_default="0"
+    )
     net_total: Mapped[Decimal] = mapped_column(
         Numeric(20, 2), nullable=False, default=Decimal("0.00")
     )
@@ -241,6 +244,10 @@ class PayrollResult(Base, UUIDPrimaryKeyMixin, TimestampMixin):
             "benefit_employee_deduction >= 0 AND benefit_employer_contribution >= 0",
             name="benefit_amounts_non_negative",
         ),
+        CheckConstraint(
+            "working_days >= 0 AND paid_days >= 0 AND unpaid_days >= 0 AND unpaid_deduction >= 0",
+            name="attendance_non_negative",
+        ),
         Index("ix_results_run", "payroll_run_id"),
         Index("ix_results_employee", "employee_id"),
     )
@@ -254,6 +261,14 @@ class PayrollResult(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     days_in_period: Mapped[int] = mapped_column(Integer, nullable=False)
     payable_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    working_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    paid_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    unpaid_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    unpaid_deduction: Mapped[Decimal] = mapped_column(
+        Numeric(20, 2), nullable=False, default=Decimal("0.00"), server_default="0"
+    )
     base_salary: Mapped[Decimal] = mapped_column(Numeric(20, 2), nullable=False)
     housing_allowance: Mapped[Decimal] = mapped_column(Numeric(20, 2), nullable=False)
     transport_allowance: Mapped[Decimal] = mapped_column(Numeric(20, 2), nullable=False)
