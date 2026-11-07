@@ -50,6 +50,8 @@ TONES = {
     "leave": "accent",
     "absent": "danger",
     "holiday": "neutral",
+    "national": "accent",
+    "company": "neutral",
 }
 
 

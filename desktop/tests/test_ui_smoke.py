@@ -155,7 +155,8 @@ def test_main_window_loads_every_page_and_switches_theme(
     assert leave.request_year.currentData() == QDate.currentDate().year()
     assert leave.types_table.rowCount() == 1
     assert leave.types_table.item(0, 0).text() == "ANNUAL"
-    assert leave.holidays_table.rowCount() == 1
+    assert leave.holidays_table.rowCount() == 2
+    assert leave.import_holidays_button.isEnabled() is True
     assert leave.attendance_table.rowCount() == 1
     attendance_status = leave.attendance_table.cellWidget(0, 2)
     assert attendance_status is not None
@@ -209,6 +210,8 @@ def test_main_window_loads_every_page_and_switches_theme(
     qtbot.waitUntil(lambda: payroll.results_table.rowCount() == 1, timeout=8_000)
     assert payroll.runs_table.item(0, 0).text() == "PR-202610-0001"
     assert payroll.results_table.item(0, 0).text() == "Achieng Otieno"
+    assert payroll.results_table.item(0, 2).text() == "2"
+    assert payroll.results_table.item(0, 3).text() == "KES 2,000.00"
 
     window.navigation.setCurrentRow(7)
     accounting = window.stack.currentWidget()

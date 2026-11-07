@@ -128,6 +128,7 @@ class PayrollRun(BaseModel):
     loan_deduction_total: Decimal = Decimal("0.00")
     benefit_employee_total: Decimal = Decimal("0.00")
     benefit_employer_total: Decimal = Decimal("0.00")
+    unpaid_deduction_total: Decimal = Decimal("0.00")
     net_total: Decimal
     employer_cost_total: Decimal
     prepared_by: uuid.UUID
@@ -149,6 +150,10 @@ class PayrollResult(BaseModel):
     currency: str
     days_in_period: int
     payable_days: int
+    working_days: int = 0
+    paid_days: int = 0
+    unpaid_days: int = 0
+    unpaid_deduction: Decimal = Decimal("0.00")
     base_salary: Decimal
     gross: Decimal
     taxable_income: Decimal
@@ -186,6 +191,16 @@ class Holiday(BaseModel):
     company_id: uuid.UUID
     holiday_date: date
     name: str
+    origin: str = "company"
+    calendar_version: str | None = None
+
+
+class ImportNationalHolidaysResponse(BaseModel):
+    imported: int
+    skipped: int
+    calendar_version: str
+    source_url: str
+    verified_on: date
 
 
 class LeaveBalance(BaseModel):

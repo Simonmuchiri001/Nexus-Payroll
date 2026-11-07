@@ -319,6 +319,32 @@ def test_asset_client_manages_categories_register_and_lifecycle() -> None:
     assert disposal_body["version"] == approved.version
 
 
+def test_national_holiday_import_client_preserves_origin() -> None:
+    api = FakeApi()
+    client = _client(api)
+    client.login("nexus-demo", "admin@nexus.co.ke", "NexusDemo!2026")
+
+    holidays = client.list_holidays(COMPANY_ID, year=2026)
+    assert len(holidays) == 2
+    origins = {holiday.origin for holiday in holidays}
+    assert origins == {"company", "national"}
+    national = next(h for h in holidays if h.origin == "national")
+    assert national.calendar_version == "2026.1"
+
+    imported = client.import_national_holidays(COMPANY_ID)
+    assert imported.imported == 11
+    assert imported.skipped == 1
+    assert imported.calendar_version == "2026.1"
+    assert imported.verified_on.isoformat() == "2026-11-07"
+
+    results = client.payroll_results("77777777-7777-7777-7777-777777777777")
+    assert len(results) == 1
+    assert results[0].unpaid_days == 2
+    assert results[0].unpaid_deduction == 2000
+    assert results[0].working_days == 22
+    assert results[0].paid_days == 20
+
+
 def test_structured_api_error_envelope_is_preserved() -> None:
     api = FakeApi()
     api.error_overrides["/roles"] = (

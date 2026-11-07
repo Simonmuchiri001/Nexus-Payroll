@@ -439,6 +439,8 @@ class PayrollPage(BasePage):
             [
                 "Employee",
                 "Gross",
+                "Unpaid days",
+                "Unpaid deduction",
                 "Taxable",
                 "PAYE",
                 "NSSF",
@@ -630,8 +632,18 @@ class PayrollPage(BasePage):
             self.results_table.insertRow(row_index)
             employee = result.employee_name or result.employee_number or str(result.employee_id)
             self.results_table.setItem(row_index, 0, text_item(employee))
+            self.results_table.setItem(
+                row_index, 1, text_item(money(result.gross, result.currency), numeric=True)
+            )
+            self.results_table.setItem(
+                row_index, 2, text_item(str(result.unpaid_days), numeric=True)
+            )
+            self.results_table.setItem(
+                row_index,
+                3,
+                text_item(money(result.unpaid_deduction, result.currency), numeric=True),
+            )
             values = (
-                result.gross,
                 result.taxable_income,
                 result.paye,
                 result.nssf_employee,
@@ -640,7 +652,7 @@ class PayrollPage(BasePage):
                 result.net_pay,
                 result.employer_cost,
             )
-            for column, value in enumerate(values, start=1):
+            for column, value in enumerate(values, start=4):
                 self.results_table.setItem(
                     row_index, column, text_item(money(value, result.currency), numeric=True)
                 )

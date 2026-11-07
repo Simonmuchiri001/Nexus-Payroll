@@ -829,14 +829,18 @@ class LeavePage(BasePage):
         self.add_holiday_button = QPushButton("Add holiday")
         self.add_holiday_button.setEnabled(self.session.can("leave.manage"))
         self.add_holiday_button.clicked.connect(self._add_holiday)
+        self.import_holidays_button = QPushButton("Import national holidays")
+        self.import_holidays_button.setEnabled(self.session.can("leave.manage"))
+        self.import_holidays_button.clicked.connect(self._import_holidays)
         holidays_head.addWidget(holidays_title)
         holidays_head.addStretch(1)
         holidays_head.addWidget(self.holiday_year)
+        holidays_head.addWidget(self.import_holidays_button)
         holidays_head.addWidget(self.add_holiday_button)
         holidays_layout.addLayout(holidays_head)
 
         self.holidays_table = QTableWidget()
-        configure_table(self.holidays_table, ["Date", "Name"], stretch_column=1)
+        configure_table(self.holidays_table, ["Date", "Name", "Origin"], stretch_column=1)
         self.holidays_table.itemSelectionChanged.connect(self._holiday_selection)
         holidays_layout.addWidget(self.holidays_table, 1)
         self.remove_holiday_button = QPushButton("Remove holiday")
@@ -959,6 +963,7 @@ class LeavePage(BasePage):
             item.setData(Qt.ItemDataRole.UserRole, str(holiday.id))
             self.holidays_table.setItem(row_index, 0, item)
             self.holidays_table.setItem(row_index, 1, text_item(holiday.name))
+            self.holidays_table.setCellWidget(row_index, 2, status_widget(holiday.origin))
             self.holidays_table.setRowHeight(row_index, 38)
         self._holiday_selection()
 
@@ -1463,4 +1468,22 @@ class LeavePage(BasePage):
     def _holiday_changed(self, _value: object = None) -> None:
         self.add_holiday_button.setEnabled(self.session.can("leave.manage"))
         self.set_status("Company holidays updated")
+        self.refresh()
+
+    def _import_holidays(self) -> None:
+        self.import_holidays_button.setEnabled(False)
+        self.runner.submit(
+            lambda: self.session.client.import_national_holidays(self.session.selected_company_id),
+            on_success=lambda result: self._holidays_imported(result),
+            on_failure=self._setup_failed,
+        )
+
+    def _holidays_imported(self, result: object) -> None:
+        self.import_holidays_button.setEnabled(self.session.can("leave.manage"))
+        imported = getattr(result, "imported", 0)
+        skipped = getattr(result, "skipped", 0)
+        version = getattr(result, "calendar_version", "")
+        self.set_status(
+            f"National holidays imported: {imported} new, {skipped} skipped (calendar {version})."
+        )
         self.refresh()

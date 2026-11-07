@@ -35,6 +35,7 @@ from nexus_desktop.api.models import (
     ExpenseClaimPage,
     FixedAsset,
     Holiday,
+    ImportNationalHolidaysResponse,
     JournalPage,
     LeaveBalance,
     LeaveRequest,
@@ -852,6 +853,16 @@ class NexusClient:
 
     def delete_holiday(self, holiday_id: str) -> None:
         self._send("DELETE", f"/leave/holidays/{holiday_id}")
+
+    def import_national_holidays(self, company_id: str) -> ImportNationalHolidaysResponse:
+        return self._parse(
+            ImportNationalHolidaysResponse,
+            self._send(
+                "POST",
+                "/leave/holidays/import-national",
+                params={"company_id": company_id},
+            ),
+        )
 
     def list_leave_balances(self, employee_id: str, *, leave_year: int) -> list[LeaveBalance]:
         payload = self._get(

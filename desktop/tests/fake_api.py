@@ -185,8 +185,19 @@ class FakeApi:
             return httpx.Response(200, json=self._leave_request_page())
         if path == "/leave/types":
             return httpx.Response(200, json=[self._leave_type()])
+        if path == "/leave/holidays/import-national":
+            return httpx.Response(
+                200,
+                json={
+                    "imported": 11,
+                    "skipped": 1,
+                    "calendar_version": "2026.1",
+                    "source_url": "https://www.kenyalaw.org/lex/legislation/item/visible/107082/",
+                    "verified_on": "2026-11-07",
+                },
+            )
         if path == "/leave/holidays":
-            return httpx.Response(200, json=[self._holiday()])
+            return httpx.Response(200, json=[self._holiday(), self._national_holiday()])
         if path == "/attendance":
             return httpx.Response(200, json=self._attendance_page())
         if path == "/loans" and request.method == "POST":
@@ -413,6 +424,7 @@ class FakeApi:
             "loan_deduction_total": "0.00",
             "benefit_employee_total": "0.00",
             "benefit_employer_total": "0.00",
+            "unpaid_deduction_total": "2000.00",
             "net_total": "71617.65",
             "employer_cost_total": "105820.00",
             "prepared_by": USER_ID,
@@ -436,8 +448,12 @@ class FakeApi:
             "currency": "KES",
             "days_in_period": 31,
             "payable_days": 31,
+            "working_days": 22,
+            "paid_days": 20,
+            "unpaid_days": 2,
+            "unpaid_deduction": "2000.00",
             "base_salary": "85000.00",
-            "gross": "100000.00",
+            "gross": "98000.00",
             "taxable_income": "91430.00",
             "paye": "19812.35",
             "nssf_employee": "2400.00",
@@ -610,6 +626,19 @@ class FakeApi:
             "company_id": COMPANY_ID,
             "holiday_date": "2026-01-05",
             "name": "Company Founders Day",
+            "origin": "company",
+            "calendar_version": None,
+        }
+
+    @staticmethod
+    def _national_holiday() -> dict[str, Any]:
+        return {
+            "id": "32323232-3232-3232-3232-323232323232",
+            "company_id": COMPANY_ID,
+            "holiday_date": "2026-01-01",
+            "name": "New Year's Day",
+            "origin": "national",
+            "calendar_version": "2026.1",
         }
 
     @staticmethod
