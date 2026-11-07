@@ -17,6 +17,7 @@ from nexus_api.accounting.schemas import (
     TrialBalanceRow,
 )
 from nexus_api.api.deps import PaginationParams
+from nexus_api.assets.models import AssetDepreciation, AssetDisposal, FixedAsset
 from nexus_api.audit.service import record_audit
 from nexus_api.core.errors import (
     ConfigurationError,
@@ -915,3 +916,375 @@ def _run_shif_total(results: list[PayrollResult]) -> Decimal:
 
 def _run_nita_total(results: list[PayrollResult]) -> Decimal:
     return _money(sum((result.nita for result in results), Decimal("0.00")))
+
+
+async def _open_period_for(
+    session: AsyncSession, company_id: uuid.UUID, on_date: date, label: str
+) -> FiscalPeriod:
+    period = await session.scalar(
+        select(FiscalPeriod).where(
+            FiscalPeriod.company_id == company_id,
+            FiscalPeriod.start_date <= on_date,
+            FiscalPeriod.end_date >= on_date,
+        )
+    )
+    if period is None:
+        raise ConfigurationError(
+            f"No fiscal period covers the {label} date. Create the fiscal calendar first."
+        )
+    if period.status != "open":
+        raise ConflictError(f"The {label} date falls in a locked or closed fiscal period.")
+    return period
+
+
+async def _asset_account(
+    session: AsyncSession,
+    company_id: uuid.UUID,
+    account_id: uuid.UUID,
+    *,
+    label: str,
+    allowed_types: tuple[str, ...],
+) -> Account:
+    account = await session.get(Account, account_id)
+    if account is None or account.company_id != company_id:
+        raise ConfigurationError(f"The {label} for this asset is missing or belongs elsewhere.")
+    if not account.is_active:
+        raise ConfigurationError(f"The {label} for this asset is inactive.")
+    if account.account_type not in allowed_types:
+        raise ConfigurationError(f"The {label} has an invalid account type.")
+    return account
+
+
+async def post_asset_capitalization(
+    session: AsyncSession,
+    context: AuthContext,
+    asset: FixedAsset,
+    *,
+    funding_account_id: uuid.UUID,
+    reference: str,
+) -> Journal:
+    """Post the capitalization of an approved asset exactly once."""
+
+    existing = await session.scalar(
+        select(Journal).where(
+            Journal.company_id == asset.company_id,
+            Journal.source_type == "asset_capitalization",
+            Journal.source_id == asset.id,
+        )
+    )
+    if existing is not None:
+        return existing
+
+    funding = await session.get(Account, funding_account_id)
+    if funding is None or funding.company_id != asset.company_id:
+        raise ValidationFailureError("The funding account does not belong to this company.")
+    if not funding.is_active:
+        raise ValidationFailureError("The funding account must be active.")
+    if funding.account_type not in ("asset", "liability", "equity"):
+        raise ValidationFailureError(
+            "The funding account must be an asset, liability or equity account."
+        )
+    cost_account = await _asset_account(
+        session,
+        asset.company_id,
+        asset.cost_account_id,
+        label="asset cost account",
+        allowed_types=("asset",),
+    )
+    await _open_period_for(session, asset.company_id, asset.acquisition_date, "capitalization")
+
+    amount = _money(asset.cost)
+    if amount <= 0:
+        raise IntegrityError("The asset cost must be positive before capitalization.")
+    journal = Journal(
+        organization_id=asset.organization_id,
+        company_id=asset.company_id,
+        journal_number=await _next_journal_number(
+            session, asset.company_id, asset.acquisition_date
+        ),
+        journal_date=asset.acquisition_date,
+        description=f"Capitalization of fixed asset {asset.asset_number}",
+        reference=reference.strip(),
+        status="posted",
+        currency=asset.currency,
+        total_debit=amount,
+        total_credit=amount,
+        source_type="asset_capitalization",
+        source_id=asset.id,
+        created_by=context.user.id,
+        posted_by=context.user.id,
+        posted_at=datetime.now(UTC),
+    )
+    session.add(journal)
+    await session.flush()
+    session.add_all(
+        [
+            JournalLine(
+                journal_id=journal.id,
+                line_number=1,
+                account_id=cost_account.id,
+                description=f"Cost of {asset.asset_number}",
+                debit=amount,
+                credit=Decimal("0.00"),
+            ),
+            JournalLine(
+                journal_id=journal.id,
+                line_number=2,
+                account_id=funding.id,
+                description=f"Funding of {asset.asset_number}",
+                debit=Decimal("0.00"),
+                credit=amount,
+            ),
+        ]
+    )
+    await session.flush()
+    return journal
+
+
+async def post_asset_depreciation(
+    session: AsyncSession,
+    context: AuthContext,
+    asset: FixedAsset,
+    depreciation: AssetDepreciation,
+) -> Journal:
+    """Post one depreciation period exactly once."""
+
+    existing = await session.scalar(
+        select(Journal).where(
+            Journal.company_id == asset.company_id,
+            Journal.source_type == "asset_depreciation",
+            Journal.source_id == depreciation.id,
+        )
+    )
+    if existing is not None:
+        return existing
+
+    expense_account = await _asset_account(
+        session,
+        asset.company_id,
+        asset.depreciation_expense_account_id,
+        label="depreciation expense account",
+        allowed_types=("expense",),
+    )
+    accumulated_account = await _asset_account(
+        session,
+        asset.company_id,
+        asset.accumulated_depreciation_account_id,
+        label="accumulated depreciation account",
+        allowed_types=("asset",),
+    )
+    await _open_period_for(session, asset.company_id, depreciation.period_end, "depreciation")
+
+    amount = _money(depreciation.amount)
+    if amount <= 0:
+        raise IntegrityError("The depreciation amount must be positive before posting.")
+    journal = Journal(
+        organization_id=asset.organization_id,
+        company_id=asset.company_id,
+        journal_number=await _next_journal_number(
+            session, asset.company_id, depreciation.period_end
+        ),
+        journal_date=depreciation.period_end,
+        description=(
+            f"Depreciation of {asset.asset_number} for "
+            f"{depreciation.period_start:%Y-%m}"
+        ),
+        reference=depreciation.reference,
+        status="posted",
+        currency=asset.currency,
+        total_debit=amount,
+        total_credit=amount,
+        source_type="asset_depreciation",
+        source_id=depreciation.id,
+        created_by=context.user.id,
+        posted_by=context.user.id,
+        posted_at=datetime.now(UTC),
+    )
+    session.add(journal)
+    await session.flush()
+    session.add_all(
+        [
+            JournalLine(
+                journal_id=journal.id,
+                line_number=1,
+                account_id=expense_account.id,
+                description=f"Depreciation expense for {asset.asset_number}",
+                debit=amount,
+                credit=Decimal("0.00"),
+            ),
+            JournalLine(
+                journal_id=journal.id,
+                line_number=2,
+                account_id=accumulated_account.id,
+                description=f"Accumulated depreciation for {asset.asset_number}",
+                debit=Decimal("0.00"),
+                credit=amount,
+            ),
+        ]
+    )
+    await session.flush()
+    return journal
+
+
+async def post_asset_disposal(
+    session: AsyncSession,
+    context: AuthContext,
+    asset: FixedAsset,
+    disposal: AssetDisposal,
+) -> Journal:
+    """Post the disposal of an asset exactly once, including gain or loss."""
+
+    existing = await session.scalar(
+        select(Journal).where(
+            Journal.company_id == asset.company_id,
+            Journal.source_type == "asset_disposal",
+            Journal.source_id == asset.id,
+        )
+    )
+    if existing is not None:
+        return existing
+
+    proceeds_account = await _asset_account(
+        session,
+        asset.company_id,
+        disposal.proceeds_account_id,
+        label="disposal proceeds account",
+        allowed_types=("asset", "revenue"),
+    )
+    accumulated_account = await _asset_account(
+        session,
+        asset.company_id,
+        asset.accumulated_depreciation_account_id,
+        label="accumulated depreciation account",
+        allowed_types=("asset",),
+    )
+    cost_account = await _asset_account(
+        session,
+        asset.company_id,
+        asset.cost_account_id,
+        label="asset cost account",
+        allowed_types=("asset",),
+    )
+    gain_loss_account = await _asset_account(
+        session,
+        asset.company_id,
+        asset.gain_loss_account_id,
+        label="disposal gain/loss account",
+        allowed_types=("expense", "revenue"),
+    )
+    await _open_period_for(session, asset.company_id, disposal.disposal_date, "disposal")
+
+    total_depreciation = _money(
+        Decimal(
+            str(
+                await session.scalar(
+                    select(func.coalesce(func.sum(AssetDepreciation.amount), 0)).where(
+                        AssetDepreciation.asset_id == asset.id
+                    )
+                )
+                or 0
+            )
+        )
+    )
+    cost = _money(asset.cost)
+    proceeds = _money(disposal.proceeds_amount)
+    book_value = _money(cost - total_depreciation)
+    gain_loss = _money(proceeds - book_value)
+
+    lines: list[tuple[int, uuid.UUID, str, Decimal, Decimal]] = []
+    sequence = 1
+    if proceeds > 0:
+        lines.append(
+            (
+                sequence,
+                proceeds_account.id,
+                f"Proceeds from disposal of {asset.asset_number}",
+                proceeds,
+                Decimal("0.00"),
+            )
+        )
+        sequence += 1
+    if total_depreciation > 0:
+        lines.append(
+            (
+                sequence,
+                accumulated_account.id,
+                f"Clear accumulated depreciation of {asset.asset_number}",
+                total_depreciation,
+                Decimal("0.00"),
+            )
+        )
+        sequence += 1
+    if gain_loss > 0:
+        lines.append(
+            (
+                sequence,
+                gain_loss_account.id,
+                f"Gain on disposal of {asset.asset_number}",
+                Decimal("0.00"),
+                gain_loss,
+            )
+        )
+        sequence += 1
+    elif gain_loss < 0:
+        lines.append(
+            (
+                sequence,
+                gain_loss_account.id,
+                f"Loss on disposal of {asset.asset_number}",
+                -gain_loss,
+                Decimal("0.00"),
+            )
+        )
+        sequence += 1
+    lines.append(
+        (
+            sequence,
+            cost_account.id,
+            f"Remove cost of {asset.asset_number}",
+            Decimal("0.00"),
+            cost,
+        )
+    )
+
+    debit_total = _money(sum((line[3] for line in lines), Decimal("0.00")))
+    credit_total = _money(sum((line[4] for line in lines), Decimal("0.00")))
+    if debit_total != credit_total or debit_total <= 0:
+        raise IntegrityError("The asset disposal journal is not balanced.")
+
+    journal = Journal(
+        organization_id=asset.organization_id,
+        company_id=asset.company_id,
+        journal_number=await _next_journal_number(
+            session, asset.company_id, disposal.disposal_date
+        ),
+        journal_date=disposal.disposal_date,
+        description=f"Disposal of fixed asset {asset.asset_number}",
+        reference=f"DISP-{asset.asset_number}",
+        status="posted",
+        currency=asset.currency,
+        total_debit=debit_total,
+        total_credit=credit_total,
+        source_type="asset_disposal",
+        source_id=asset.id,
+        created_by=context.user.id,
+        posted_by=context.user.id,
+        posted_at=datetime.now(UTC),
+    )
+    session.add(journal)
+    await session.flush()
+    session.add_all(
+        [
+            JournalLine(
+                journal_id=journal.id,
+                line_number=line_number,
+                account_id=account_id,
+                description=description,
+                debit=debit,
+                credit=credit,
+            )
+            for line_number, account_id, description, debit, credit in lines
+        ]
+    )
+    await session.flush()
+    return journal

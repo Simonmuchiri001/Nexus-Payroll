@@ -1,6 +1,7 @@
 """Import every mapped class so Alembic and metadata creation see the full schema."""
 
 from nexus_api.accounting.models import Account, FiscalPeriod, Journal, JournalLine
+from nexus_api.assets.models import AssetCategory, AssetDepreciation, AssetDisposal, FixedAsset
 from nexus_api.audit.models import AuditEvent
 from nexus_api.benefits.models import BenefitEnrollment, BenefitPlan
 from nexus_api.database.base import Base
@@ -43,6 +44,9 @@ from nexus_api.payroll.models import (
 
 __all__ = [
     "Account",
+    "AssetCategory",
+    "AssetDepreciation",
+    "AssetDisposal",
     "AttendanceRecord",
     "AuditEvent",
     "Base",
@@ -61,6 +65,7 @@ __all__ = [
     "ExpenseClaim",
     "FiscalCalendarMarker",
     "FiscalPeriod",
+    "FixedAsset",
     "Journal",
     "JournalLine",
     "LeaveBalance",

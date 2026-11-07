@@ -17,6 +17,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from nexus_api import __version__
 from nexus_api.accounting.router import router as accounting_router
+from nexus_api.assets.router import router as assets_router
 from nexus_api.benefits.router import router as benefits_router
 from nexus_api.config import Settings, get_settings
 from nexus_api.core.context import RequestContext, get_request_context, set_request_context
@@ -187,6 +188,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(expenses_router, prefix=resolved.api_v1_prefix)
     app.include_router(payroll_router, prefix=resolved.api_v1_prefix)
     app.include_router(accounting_router, prefix=resolved.api_v1_prefix)
+    app.include_router(assets_router, prefix=resolved.api_v1_prefix)
     return app
 
 

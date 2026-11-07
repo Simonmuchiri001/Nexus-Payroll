@@ -46,6 +46,11 @@ class PermissionCode(StrEnum):
     REPORT_VIEW = "report.view"
     RULE_VIEW = "rule.view"
     RULE_MANAGE = "rule.manage"
+    ASSET_VIEW = "asset.view"
+    ASSET_MANAGE = "asset.manage"
+    ASSET_APPROVE = "asset.approve"
+    ASSET_DEPRECIATE = "asset.depreciate"
+    ASSET_DISPOSE = "asset.dispose"
 
 
 PERMISSION_DESCRIPTIONS: dict[PermissionCode, tuple[str, str]] = {
@@ -89,6 +94,11 @@ PERMISSION_DESCRIPTIONS: dict[PermissionCode, tuple[str, str]] = {
     PermissionCode.REPORT_VIEW: ("reporting", "View reports and analytics"),
     PermissionCode.RULE_VIEW: ("statutory", "View statutory rule sets"),
     PermissionCode.RULE_MANAGE: ("statutory", "Manage statutory rule sets"),
+    PermissionCode.ASSET_VIEW: ("assets", "View asset categories, registers and schedules"),
+    PermissionCode.ASSET_MANAGE: ("assets", "Manage asset categories and draft asset records"),
+    PermissionCode.ASSET_APPROVE: ("assets", "Approve or reject asset capitalization submissions"),
+    PermissionCode.ASSET_DEPRECIATE: ("assets", "Post asset depreciation periods"),
+    PermissionCode.ASSET_DISPOSE: ("assets", "Submit and approve asset disposals"),
 }
 
 
@@ -190,6 +200,11 @@ ROLE_PERMISSIONS: dict[str, frozenset[PermissionCode]] = {
             PermissionCode.ACCOUNTING_POST,
             PermissionCode.REPORT_VIEW,
             PermissionCode.AUDIT_VIEW,
+            PermissionCode.ASSET_VIEW,
+            PermissionCode.ASSET_MANAGE,
+            PermissionCode.ASSET_APPROVE,
+            PermissionCode.ASSET_DEPRECIATE,
+            PermissionCode.ASSET_DISPOSE,
         }
     ),
     "auditor": frozenset(
@@ -209,6 +224,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[PermissionCode]] = {
             PermissionCode.AUDIT_VIEW,
             PermissionCode.REPORT_VIEW,
             PermissionCode.RULE_VIEW,
+            PermissionCode.ASSET_VIEW,
         }
     ),
 }
