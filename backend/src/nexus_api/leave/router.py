@@ -17,6 +17,7 @@ from nexus_api.leave.schemas import (
     AttendanceUpdate,
     HolidayCreate,
     HolidayResponse,
+    ImportNationalHolidaysResponse,
     LeaveBalanceAdjust,
     LeaveBalanceInitialize,
     LeaveBalanceResponse,
@@ -85,6 +86,15 @@ async def create_holiday(
     holiday = await service.create_holiday(session, context, payload)
     response.headers["Location"] = f"/api/v1/leave/holidays/{holiday.id}"
     return holiday
+
+
+@router.post("/leave/holidays/import-national", response_model=ImportNationalHolidaysResponse)
+async def import_national_holidays(
+    company_id: uuid.UUID,
+    session: SessionDep,
+    context: AuthDep,
+) -> ImportNationalHolidaysResponse:
+    return await service.import_national_holidays(session, context, company_id=company_id)
 
 
 @router.delete("/leave/holidays/{holiday_id}", status_code=204)

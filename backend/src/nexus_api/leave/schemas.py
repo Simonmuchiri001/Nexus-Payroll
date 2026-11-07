@@ -78,6 +78,16 @@ class HolidayResponse(BaseModel):
     company_id: uuid.UUID
     holiday_date: date
     name: str
+    origin: str = "company"
+    calendar_version: str | None = None
+
+
+class ImportNationalHolidaysResponse(BaseModel):
+    imported: int = Field(ge=0)
+    skipped: int = Field(ge=0)
+    calendar_version: str
+    source_url: str
+    verified_on: date
 
 
 class LeaveBalanceInitialize(BaseModel):

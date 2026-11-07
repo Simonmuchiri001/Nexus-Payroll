@@ -17,6 +17,7 @@ from nexus_api.employees.models import Employee
 from nexus_api.identity.models import User
 from nexus_api.identity.permissions import PermissionCode
 from nexus_api.identity.service import AuthContext, validate_company_access
+from nexus_api.leave.holidays import load_national_calendar
 from nexus_api.leave.models import (
     AttendanceRecord,
     CompanyHoliday,
@@ -31,6 +32,7 @@ from nexus_api.leave.schemas import (
     AttendanceUpdate,
     HolidayCreate,
     HolidayResponse,
+    ImportNationalHolidaysResponse,
     LeaveBalanceAdjust,
     LeaveBalanceInitialize,
     LeaveBalanceResponse,
@@ -295,6 +297,8 @@ async def create_holiday(
         company_id=company.id,
         holiday_date=payload.holiday_date,
         name=payload.name.strip(),
+        origin="company",
+        calendar_version=None,
     )
     session.add(holiday)
     await session.flush()
@@ -308,6 +312,63 @@ async def create_holiday(
         metadata={"company_id": str(company.id), "date": payload.holiday_date.isoformat()},
     )
     return HolidayResponse.model_validate(holiday)
+
+
+async def import_national_holidays(
+    session: AsyncSession, context: AuthContext, *, company_id: uuid.UUID
+) -> ImportNationalHolidaysResponse:
+    company = await validate_company_access(
+        session, context, company_id, PermissionCode.LEAVE_MANAGE
+    )
+    calendar = load_national_calendar()
+    existing_dates = set(
+        (
+            await session.scalars(
+                select(CompanyHoliday.holiday_date).where(
+                    CompanyHoliday.company_id == company.id,
+                )
+            )
+        ).all()
+    )
+    imported = 0
+    skipped = 0
+    for national in calendar.holidays:
+        if national.date in existing_dates:
+            skipped += 1
+            continue
+        session.add(
+            CompanyHoliday(
+                organization_id=context.organization.id,
+                company_id=company.id,
+                holiday_date=national.date,
+                name=national.name,
+                origin="national",
+                calendar_version=calendar.version,
+            )
+        )
+        imported += 1
+    await session.flush()
+    await record_audit(
+        session,
+        organization_id=context.organization.id,
+        actor_user_id=context.user.id,
+        action="holiday.imported_national",
+        entity_type="company_holiday",
+        entity_id=company.id,
+        metadata={
+            "company_id": str(company.id),
+            "calendar_version": calendar.version,
+            "imported": imported,
+            "skipped": skipped,
+        },
+    )
+    return ImportNationalHolidaysResponse(
+        imported=imported,
+        skipped=skipped,
+        calendar_version=calendar.version,
+        source_url=calendar.source_url,
+        verified_on=calendar.verified_on,
+    )
 
 
 async def delete_holiday(

@@ -77,6 +77,7 @@ class CompanyHoliday(Base, UUIDPrimaryKeyMixin, TimestampMixin):
             ondelete="CASCADE",
             name="fk_holiday_company_org",
         ),
+        CheckConstraint("origin IN ('company', 'national')", name="origin_valid"),
         Index("ix_company_holidays_company_date", "company_id", "holiday_date"),
     )
 
@@ -84,6 +85,10 @@ class CompanyHoliday(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     company_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     holiday_date: Mapped[date] = mapped_column(Date, nullable=False)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
+    origin: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="company", server_default="company"
+    )
+    calendar_version: Mapped[str | None] = mapped_column(String(30))
 
 
 class LeaveBalance(Base, UUIDPrimaryKeyMixin, TimestampMixin, OptimisticLockMixin):
