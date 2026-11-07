@@ -230,21 +230,30 @@ class MainWindow(QMainWindow):
         return bar
 
     def _register_pages(self) -> None:
-        definitions: list[tuple[str, str, type[BasePage], str | None]] = [
-            ("overview", "Overview", OverviewPage, None),
-            ("people", "People", EmployeesPage, "employee.view"),
-            ("leave", "Leave", LeavePage, "leave.view"),
-            ("loans", "Loans", LoansPage, "loan.view"),
-            ("benefits", "Benefits", BenefitsPage, "benefit.view"),
-            ("expenses", "Expenses", ExpensesPage, "expense.view"),
-            ("payroll", "Payroll", PayrollPage, "payroll.view"),
-            ("accounting", "Accounting", AccountingPage, "accounting.view"),
-            ("assets", "Assets", AssetsPage, "asset.view"),
-            ("access", "Access", AccessPage, "user.view"),
+        definitions: list[tuple[str, str, type[BasePage], str | None, str]] = [
+            ("overview", "Overview", OverviewPage, None, "Workspace"),
+            ("people", "People", EmployeesPage, "employee.view", "People"),
+            ("leave", "Leave", LeavePage, "leave.view", "People"),
+            ("loans", "Loans", LoansPage, "loan.view", "People"),
+            ("benefits", "Benefits", BenefitsPage, "benefit.view", "People"),
+            ("expenses", "Expenses", ExpensesPage, "expense.view", "Finance"),
+            ("payroll", "Payroll", PayrollPage, "payroll.view", "Finance"),
+            ("accounting", "Accounting", AccountingPage, "accounting.view", "Finance"),
+            ("assets", "Assets", AssetsPage, "asset.view", "Finance"),
+            ("access", "Access", AccessPage, "user.view", "Admin"),
         ]
-        for key, title, page_type, permission in definitions:
+        current_section = ""
+        for key, title, page_type, permission, section in definitions:
             if permission is not None and not self.session.can(permission):
                 continue
+            if section != current_section:
+                # First section (Workspace) already has a sidebar label.
+                if section != "Workspace":
+                    header = QListWidgetItem(section.upper())
+                    header.setData(Qt.ItemDataRole.UserRole, "")
+                    header.setFlags(Qt.ItemFlag.NoItemFlags)
+                    self.navigation.addItem(header)
+                current_section = section
             page = page_type(self.session)
             index = self.stack.addWidget(page)
             self._pages[key] = page

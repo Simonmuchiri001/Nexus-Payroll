@@ -66,6 +66,27 @@ class OverviewPage(BasePage):
         header_row.addWidget(self.run_button, 0, Qt.AlignmentFlag.AlignBottom)
         root.addLayout(header_row)
 
+        shortcuts = QHBoxLayout()
+        shortcuts.setSpacing(10)
+        for label, key in [
+            ("Open leave", "leave"),
+            ("Open loans", "loans"),
+            ("Open benefits", "benefits"),
+            ("Open expenses", "expenses"),
+            ("Open assets", "assets"),
+            ("Open accounting", "accounting"),
+        ]:
+            button = QPushButton(label)
+            button.setProperty("role", "ghost")
+
+            def _on_shortcut(_checked: bool = False, target: str = key) -> None:
+                self.navigate_requested.emit(target)
+
+            button.clicked.connect(_on_shortcut)
+            shortcuts.addWidget(button)
+        shortcuts.addStretch(1)
+        root.addLayout(shortcuts)
+
         self.error_label = QLabel()
         self.error_label.setProperty("role", "error")
         self.error_label.setWordWrap(True)

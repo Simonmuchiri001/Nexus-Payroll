@@ -66,7 +66,18 @@ def client(api: FakeApi) -> Iterator[NexusClient]:
 
 
 def _nav_titles(window: MainWindow) -> list[str]:
-    return [window.navigation.item(index).text() for index in range(window.navigation.count())]
+    from PyQt6.QtCore import Qt
+
+    titles: list[str] = []
+    for index in range(window.navigation.count()):
+        item = window.navigation.item(index)
+        if item is not None and item.data(Qt.ItemDataRole.UserRole):
+            titles.append(item.text())
+    return titles
+
+
+def _go_to(window: MainWindow, key: str) -> None:
+    window._navigate_to(key)
 
 
 def test_login_window_emits_authenticated_session(
@@ -140,13 +151,13 @@ def test_main_window_loads_every_page_and_switches_theme(
         "Access",
     ]
 
-    window.navigation.setCurrentRow(1)
+    _go_to(window, "people")
     employees = window.stack.currentWidget()
     assert isinstance(employees, EmployeesPage)
     qtbot.waitUntil(lambda: employees.table.rowCount() == 1, timeout=8_000)
     assert employees.table.item(0, 0).text() == "Achieng Otieno"
 
-    window.navigation.setCurrentRow(2)
+    _go_to(window, "leave")
     leave = window.stack.currentWidget()
     assert isinstance(leave, LeavePage)
     qtbot.waitUntil(lambda: leave.requests_table.rowCount() == 1, timeout=8_000)
@@ -164,7 +175,7 @@ def test_main_window_loads_every_page_and_switches_theme(
     assert badge is not None
     assert badge.text() == "Present"
 
-    window.navigation.setCurrentRow(3)
+    _go_to(window, "loans")
     loans = window.stack.currentWidget()
     assert isinstance(loans, LoansPage)
     qtbot.waitUntil(lambda: loans.loans_table.rowCount() == 1, timeout=8_000)
@@ -177,7 +188,7 @@ def test_main_window_loads_every_page_and_switches_theme(
     assert loans.progress_metric.text() == "4/12 instalments"
     assert loans.disburse_button.isEnabled() is False
 
-    window.navigation.setCurrentRow(4)
+    _go_to(window, "benefits")
     benefits = window.stack.currentWidget()
     assert isinstance(benefits, BenefitsPage)
     qtbot.waitUntil(lambda: benefits.plans_table.rowCount() == 1, timeout=8_000)
@@ -190,7 +201,7 @@ def test_main_window_loads_every_page_and_switches_theme(
     assert benefits.new_plan_button.isEnabled() is True
     assert benefits.end_enrollment_button.isEnabled() is True
 
-    window.navigation.setCurrentRow(5)
+    _go_to(window, "expenses")
     expenses = window.stack.currentWidget()
     assert isinstance(expenses, ExpensesPage)
     qtbot.waitUntil(lambda: expenses.categories_table.rowCount() == 1, timeout=8_000)
@@ -203,7 +214,7 @@ def test_main_window_loads_every_page_and_switches_theme(
     assert expenses.new_claim_button.isEnabled() is True
     assert expenses.approve_claim_button.isEnabled() is False
 
-    window.navigation.setCurrentRow(6)
+    _go_to(window, "payroll")
     payroll = window.stack.currentWidget()
     assert isinstance(payroll, PayrollPage)
     qtbot.waitUntil(lambda: payroll.runs_table.rowCount() == 1, timeout=8_000)
@@ -213,14 +224,14 @@ def test_main_window_loads_every_page_and_switches_theme(
     assert payroll.results_table.item(0, 2).text() == "2"
     assert payroll.results_table.item(0, 3).text() == "KES 2,000.00"
 
-    window.navigation.setCurrentRow(7)
+    _go_to(window, "accounting")
     accounting = window.stack.currentWidget()
     assert isinstance(accounting, AccountingPage)
     qtbot.waitUntil(lambda: accounting.balance_badge.text() == "Balanced", timeout=8_000)
     assert accounting.accounts_table.rowCount() == 6
     assert accounting.journals_table.rowCount() == 1
 
-    window.navigation.setCurrentRow(8)
+    _go_to(window, "assets")
     assets = window.stack.currentWidget()
     assert isinstance(assets, AssetsPage)
     qtbot.waitUntil(lambda: assets.categories_table.rowCount() == 1, timeout=8_000)
@@ -241,7 +252,7 @@ def test_main_window_loads_every_page_and_switches_theme(
     assert assets.dispose_button.isEnabled() is True
     assert assets.approve_asset_button.isEnabled() is False
 
-    window.navigation.setCurrentRow(9)
+    _go_to(window, "access")
     access = window.stack.currentWidget()
     assert isinstance(access, AccessPage)
     qtbot.waitUntil(lambda: access.table.rowCount() == 1, timeout=8_000)
@@ -331,7 +342,7 @@ def test_asset_page_disables_actions_without_operational_permissions(
     qtbot.addWidget(window)
     window.show()
     assert _nav_titles(window) == ["Overview", "Assets"]
-    window.navigation.setCurrentRow(1)
+    _go_to(window, "assets")
     assets = window.stack.currentWidget()
     assert isinstance(assets, AssetsPage)
     qtbot.waitUntil(lambda: assets.categories_table.rowCount() == 1, timeout=8_000)

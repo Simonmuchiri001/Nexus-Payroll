@@ -10,6 +10,13 @@ dependencies = [
   "PyQt6>=6.8.1",
 ]
 
+[project.optional-dependencies]
+# Build-only tools for the PyInstaller macOS bundle. Not shipped in the app.
+packaging = [
+  "pyinstaller>=6.0",
+  "pillow>=10.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
